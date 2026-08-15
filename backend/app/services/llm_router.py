@@ -120,7 +120,7 @@ class LLMRouter:
 
         gemini_key = os.getenv("GEMINI_API_KEY")
         if gemini_key and GeminiLLM is not None:
-            gemini_client = GeminiLLM(api_key=gemini_key, default_model=os.getenv("TRUTHCHECKER_GEMINI_MODEL", "gemini-2.5-flash"))
+            gemini_client = GeminiLLM(api_key=gemini_key, default_model=os.getenv("TRUTHCHECKER_GEMINI_MODEL", "gemini-3.6-flash"))
             if gemini_client.client is not None:
                 self.providers.append(("gemini", gemini_client, gemini_client.default_model))
 

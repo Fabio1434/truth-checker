@@ -22,7 +22,7 @@ except ImportError:  # pragma: no cover - lets unit tests import without SDK
     genai_types = None  # type: ignore
 
 
-DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_MODEL = "gemini-3.6-flash"
 
 
 class RateLimitError(Exception):
