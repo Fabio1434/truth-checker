@@ -2,12 +2,12 @@
   "use strict";
 
   // ✅ BLOC CORRIGÉ POUR RENDER :
-  const API_BASE = (() => {
-    if (location.protocol === "file:") return "http://localhost:8000";
-    const configured = window.TRUTHCHECKER_API || localStorage.getItem("truthchecker_api");
-    if (configured) return configured.replace(/\/$/, "");
-    return ""; // Utilise l'origine courante (https://truth-checker-jsio.onrender.com)
-  })();
+const API_BASE = (() => {
+  if (location.protocol === "file:") return "http://localhost:8000";
+  const configured = window.TRUTHCHECKER_API || localStorage.getItem("truthchecker_api");
+  if (configured) return configured.replace(/\/$/, "");
+  return ""; // Utilise l'origine courante (https://truth-checker-jsio.onrender.com)
+})();
   const HISTORY_KEY = "truthchecker_history_v1";
   const MAX_HISTORY = 8;
 
@@ -137,14 +137,15 @@
     if (score >= 40) return "var(--mixed)";
     return "var(--false)";
   }
+  function verdictColor(verdict) {
+    return { vrai: "var(--verified)", faux: "var(--false)", partiellement_vrai: "var(--mixed)", non_verifiable: "var(--unknown)" }[verdict] || "var(--unknown)";
+  }
 
   // ---------------------------------------------------------------- date
-  if ($("#today-date")) {
-    $("#today-date").textContent = new Date().toLocaleDateString(
-      state.lang === "fr" ? "fr-FR" : "en-US",
-      { day: "2-digit", month: "long", year: "numeric" }
-    );
-  }
+  $("#today-date").textContent = new Date().toLocaleDateString(
+    state.lang === "fr" ? "fr-FR" : "en-US",
+    { day: "2-digit", month: "long", year: "numeric" }
+  );
 
   // ---------------------------------------------------------------- tabs
   function setType(type) {
@@ -166,23 +167,16 @@
       btn.classList.add("is-active");
       state.lang = btn.dataset.lang;
       const locale = state.lang === "fr" ? "fr-FR" : state.lang === "mg" ? "mg-MG" : "en-US";
-      if ($("#today-date")) {
-        $("#today-date").textContent = new Date().toLocaleDateString(locale, { day: "2-digit", month: "long", year: "numeric" });
-      }
+      $("#today-date").textContent = new Date().toLocaleDateString(locale, { day: "2-digit", month: "long", year: "numeric" });
     });
   });
 
   // ---------------------------------------------------------------- text counter
   const textInput = $("#input-text");
-  if (textInput) {
-    textInput.addEventListener("input", () => { 
-      if ($("#text-count")) $("#text-count").textContent = String(textInput.value.length); 
-    });
-  }
+  textInput.addEventListener("input", () => { $("#text-count").textContent = String(textInput.value.length); });
 
   // ---------------------------------------------------------------- paste buttons
   async function pasteInto(input) {
-    if (!input) return;
     try {
       const text = await navigator.clipboard.readText();
       input.value = text;
@@ -192,16 +186,16 @@
       showToast(state.lang === "fr" ? "Impossible de lire le presse-papier." : "Couldn't read clipboard.");
     }
   }
-  $("#paste-text")?.addEventListener("click", () => pasteInto(textInput));
-  $("#paste-url")?.addEventListener("click", () => pasteInto($("#input-url")));
+  $("#paste-text").addEventListener("click", () => pasteInto(textInput));
+  $("#paste-url").addEventListener("click", () => pasteInto($("#input-url")));
 
   // ---------------------------------------------------------------- example chips
   $$("#example-chips .chip").forEach((chip) => {
     chip.addEventListener("click", () => {
       const [type, content] = chip.dataset.example.split("|");
       setType(type);
-      if (type === "text" && textInput) { textInput.value = content; textInput.dispatchEvent(new Event("input")); textInput.focus(); }
-      else if (type === "url" && $("#input-url")) { $("#input-url").value = content; $("#input-url").focus(); }
+      if (type === "text") { textInput.value = content; textInput.dispatchEvent(new Event("input")); textInput.focus(); }
+      else if (type === "url") { $("#input-url").value = content; $("#input-url").focus(); }
     });
   });
 
@@ -212,24 +206,18 @@
   const emptyState = $("#dropzone-empty");
   const removeBtn = $("#dropzone-remove");
 
-  if (dropzone && fileInput) {
-    dropzone.addEventListener("click", (e) => { if (e.target !== removeBtn) fileInput.click(); });
-    dropzone.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); } });
-    ["dragover", "dragenter"].forEach((ev) => dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.add("is-drag"); }));
-    ["dragleave", "drop"].forEach((ev) => dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.remove("is-drag"); }));
-    dropzone.addEventListener("drop", (e) => { const f = e.dataTransfer.files?.[0]; if (f) handleFile(f); });
-    fileInput.addEventListener("change", () => { if (fileInput.files?.[0]) handleFile(fileInput.files[0]); });
-  }
-  if (removeBtn) {
-    removeBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      state.imageBase64 = null; state.imageMediaType = null;
-      if (fileInput) fileInput.value = "";
-      if (previewImg) previewImg.hidden = true; 
-      if (removeBtn) removeBtn.hidden = true; 
-      if (emptyState) emptyState.hidden = false;
-    });
-  }
+  dropzone.addEventListener("click", (e) => { if (e.target !== removeBtn) fileInput.click(); });
+  dropzone.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); } });
+  ["dragover", "dragenter"].forEach((ev) => dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.add("is-drag"); }));
+  ["dragleave", "drop"].forEach((ev) => dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.remove("is-drag"); }));
+  dropzone.addEventListener("drop", (e) => { const f = e.dataTransfer.files?.[0]; if (f) handleFile(f); });
+  fileInput.addEventListener("change", () => { if (fileInput.files?.[0]) handleFile(fileInput.files[0]); });
+  removeBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    state.imageBase64 = null; state.imageMediaType = null;
+    fileInput.value = "";
+    previewImg.hidden = true; removeBtn.hidden = true; emptyState.hidden = false;
+  });
 
   function handleFile(file) {
     if (!file.type.startsWith("image/")) { showError("Merci de choisir un fichier image."); return; }
@@ -240,21 +228,19 @@
       const [meta, b64] = result.split(",");
       state.imageBase64 = b64;
       state.imageMediaType = meta.match(/data:(.*);base64/)?.[1] || file.type;
-      if (previewImg) { previewImg.src = result; previewImg.hidden = false; }
-      if (emptyState) emptyState.hidden = true; 
-      if (removeBtn) removeBtn.hidden = false;
+      previewImg.src = result; previewImg.hidden = false;
+      emptyState.hidden = true; removeBtn.hidden = false;
     };
     reader.readAsDataURL(file);
   }
 
   // ---------------------------------------------------------------- errors / toast
-  function showError(msg) { const el = $("#error-msg"); if (el) { el.textContent = msg; el.hidden = false; } }
-  function hideError() { const el = $("#error-msg"); if (el) el.hidden = true; }
+  function showError(msg) { const el = $("#error-msg"); el.textContent = msg; el.hidden = false; }
+  function hideError() { $("#error-msg").hidden = true; }
 
   let toastTimer = null;
   function showToast(msg) {
     const el = $("#toast");
-    if (!el) return;
     el.textContent = msg;
     el.classList.add("is-visible");
     clearTimeout(toastTimer);
@@ -263,10 +249,10 @@
 
   // ---------------------------------------------------------------- stats (session)
   function refreshStats() {
-    if ($("#stat-checks")) $("#stat-checks").textContent = String(state.sessionChecks);
-    if ($("#stat-sources")) $("#stat-sources").textContent = String(state.sessionSources);
-    if ($("#stat-verified")) $("#stat-verified").textContent = String(state.sessionVerified);
-    if ($("#stat-false")) $("#stat-false").textContent = String(state.sessionFalse);
+    $("#stat-checks").textContent = String(state.sessionChecks);
+    $("#stat-sources").textContent = String(state.sessionSources);
+    $("#stat-verified").textContent = String(state.sessionVerified);
+    $("#stat-false").textContent = String(state.sessionFalse);
   }
   try {
     const saved = JSON.parse(sessionStorage.getItem("truthchecker_stats") || "{}");
@@ -305,8 +291,7 @@
     const list = loadHistory();
     const container = $("#history-list");
     const clearBtn = $("#clear-history");
-    if (!container) return;
-    if (clearBtn) clearBtn.hidden = list.length === 0;
+    clearBtn.hidden = list.length === 0;
     if (list.length === 0) {
       container.innerHTML = `<li class="history-empty">Vos dossiers récents apparaîtront ici — rien stocké ailleurs que sur cet appareil.</li>`;
       return;
@@ -321,15 +306,15 @@
         <span class="history-item__score">${entry.data.score ?? entry.data.evidence_score ?? 0}</span>
       `;
       li.addEventListener("click", () => {
-        if (dossier) dossier.hidden = false;
-        if (traceSection) traceSection.hidden = true;
+        dossier.hidden = false;
+        traceSection.hidden = true;
         renderDossier(entry.data, { fromHistory: true });
-        if (dossier) window.scrollTo({ top: dossier.offsetTop - 20, behavior: "smooth" });
+        window.scrollTo({ top: dossier.offsetTop - 20, behavior: "smooth" });
       });
       container.appendChild(li);
     });
   }
-  $("#clear-history")?.addEventListener("click", () => {
+  $("#clear-history").addEventListener("click", () => {
     localStorage.removeItem(HISTORY_KEY);
     renderHistory();
   });
@@ -343,6 +328,7 @@
   const investigationBoard = $("#investigation-board");
   const investigationFeed = $("#investigation-feed");
   const investigationStatus = $("#investigation-status");
+  const investigationCore = $("#investigation-core");
   const investigationCoreLabel = $("#investigation-core-label");
   const investigationCoreDetail = $("#investigation-core-detail");
   let fallbackTimer = null;
@@ -404,8 +390,8 @@
 
   function resetTrace() {
     traceSteps.forEach((li) => li.classList.remove("is-active", "is-done"));
-    if (traceQueries) traceQueries.innerHTML = "";
-    if (traceBar) traceBar.style.width = "4%";
+    traceQueries.innerHTML = "";
+    traceBar.style.width = "4%";
     resetInvestigation();
   }
   function setStepByKey(key) {
@@ -415,23 +401,22 @@
       li.classList.toggle("is-done", i < idx);
       li.classList.toggle("is-active", i === idx);
     });
-    if (traceBar) traceBar.style.width = `${Math.min(96, ((idx + 1) / STEP_ORDER.length) * 100)}%`;
+    traceBar.style.width = `${Math.min(96, ((idx + 1) / STEP_ORDER.length) * 100)}%`;
   }
   function markStepDoneAll() {
     traceSteps.forEach((li) => { li.classList.remove("is-active"); li.classList.add("is-done"); });
-    if (traceBar) traceBar.style.width = "100%";
+    traceBar.style.width = "100%";
   }
   function addQuery(text) {
-    if (traceQueries) {
-      const li = document.createElement("li");
-      li.textContent = text;
-      traceQueries.appendChild(li);
-    }
+    const li = document.createElement("li");
+    li.textContent = text;
+    traceQueries.appendChild(li);
     investigationSearchCount += 1;
     activateInvestigationNode("search", `${investigationSearchCount} requête${investigationSearchCount > 1 ? "s" : ""}`);
     pushInvestigationFeed("search", text);
   }
 
+  // simulated fallback progression, used only if the live SSE stream is unavailable
   function startFallbackProgress() {
     let i = 0;
     const advance = () => {
@@ -451,11 +436,11 @@
   function buildPayload() {
     const payload = { type: state.type, language: state.lang, content: "" };
     if (state.type === "text") {
-      const v = textInput ? textInput.value.trim() : "";
+      const v = textInput.value.trim();
       if (!v) return { error: "Merci de coller un texte à vérifier." };
       payload.content = v;
     } else if (state.type === "url") {
-      const v = $("#input-url") ? $("#input-url").value.trim() : "";
+      const v = $("#input-url").value.trim();
       if (!v) return { error: "Merci de renseigner une URL." };
       try { new URL(v); } catch { return { error: "Cette URL ne semble pas valide." }; }
       payload.content = v;
@@ -463,89 +448,73 @@
       if (!state.imageBase64) return { error: "Merci d'importer une image." };
       payload.image_base64 = state.imageBase64;
       payload.image_media_type = state.imageMediaType;
-      payload.content = $("#input-image-caption") ? $("#input-image-caption").value.trim() : "";
+      payload.content = $("#input-image-caption").value.trim();
     }
     return { payload };
   }
 
-  if (form) {
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      hideError();
-      if (!(await requireAuth())) return;
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    hideError();
+    if (!(await requireAuth())) return;
 
-      const { payload, error } = buildPayload();
-      if (error) return showError(error);
+    const { payload, error } = buildPayload();
+    if (error) return showError(error);
 
-      if (dossier) dossier.hidden = true;
-      if (submitBtn) submitBtn.disabled = true;
-      if (traceSection) {
-        traceSection.hidden = false;
-        traceSection.classList.add("is-streaming");
-      }
-      resetTrace();
+    dossier.hidden = true;
+    submitBtn.disabled = true;
+    traceSection.hidden = false;
+    traceSection.classList.add("is-streaming");
+    resetTrace();
 
+    let handled = false;
+    try {
+      handled = await runStreaming(payload);
+    } catch {
+      handled = false;
+    }
+
+    if (!handled) {
+      startFallbackProgress();
       try {
-        // Tente la vérification en streaming
-        const handled = await runStreaming(payload);
-        
-        // Si le streaming n'a pas pu s'initialiser (ex: SSE désactivé), tente l'endpoint standard sans exécuter en double
-        if (!handled) {
-          startFallbackProgress();
-          const res = await fetch(`${API_BASE}/api/analyze`, {
-            method: "POST",
-            headers: authHeaders({ "Content-Type": "application/json" }),
-            body: JSON.stringify(payload),
-          });
-          const data = await res.json();
-          if (res.status === 401) { setToken(""); state.user=null; updateAccountUI(); openAuth(); throw new Error("Votre session a expiré."); }
-          if (!res.ok) throw new Error(data.detail || "Une erreur est survenue lors de l'analyse.");
-          markStepDoneAll();
-          finishAnalysis(data);
-        }
+        const res = await fetch(`${API_BASE}/api/analyze`, {
+          method: "POST",
+          headers: authHeaders({ "Content-Type": "application/json" }),
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (res.status === 401) { setToken(""); state.user=null; updateAccountUI(); openAuth(); throw new Error("Votre session a expiré."); }
+        if (!res.ok) throw new Error(data.detail || "Une erreur est survenue.");
+        markStepDoneAll();
+        setTimeout(() => finishAnalysis(data), 250);
       } catch (err) {
-        if (traceSection) {
-          traceSection.hidden = true;
-          traceSection.classList.remove("is-streaming");
-        }
-        showError(err.message || "Impossible de joindre le serveur d'analyse.");
+        traceSection.hidden = true;
+        traceSection.classList.remove("is-streaming");
+        showError(err.message || "Impossible de joindre le serveur d'analyse. Vérifiez que le backend tourne.");
+        submitBtn.disabled = false;
       } finally {
-        if (submitBtn) submitBtn.disabled = false;
         stopFallbackProgress();
       }
-    });
-  }
+    }
+  });
 
-  // ✅ streaming robuste : propage correctement les erreurs HTTP pour éviter les doubles requêtes
+  // Live progress via Server-Sent Events (POST + manual stream read, since
+  // EventSource doesn't support POST bodies). Falls back to /api/analyze on
+  // any failure so the app still works if streaming isn't reachable.
   async function runStreaming(payload) {
     const res = await fetch(`${API_BASE}/api/analyze/stream`, {
       method: "POST",
       headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(payload),
     });
-
-    if (res.status === 401) {
-      setToken(""); state.user=null; updateAccountUI(); openAuth();
-      throw new Error("Votre session a expiré.");
-    }
-
-    if (!res.ok) {
-      let msg = "Une erreur est survenue lors de l'analyse.";
-      try {
-        const errData = await res.json();
-        msg = errData.detail || errData.message || msg;
-      } catch (_) {}
-      throw new Error(msg);
-    }
-
-    if (!res.body) return false;
+    if (res.status === 401) { setToken(""); state.user=null; updateAccountUI(); openAuth(); return false; }
+    if (!res.ok || !res.body) return false;
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
     let gotResult = false;
     let gotError = false;
-    let errorMessage = "";
 
     while (true) {
       const { done, value } = await reader.read();
@@ -553,9 +522,7 @@
       buffer += decoder.decode(value, { stream: true });
 
       let idx;
-      while ((idx = buffer.indexOf("
-
-")) !== -1) {
+      while ((idx = buffer.indexOf("\n\n")) !== -1) {
         const chunk = buffer.slice(0, idx);
         buffer = buffer.slice(idx + 2);
         const eventMatch = chunk.match(/^event:\s*(.+)$/m);
@@ -579,52 +546,47 @@
         } else if (eventName === "result") {
           markStepDoneAll();
           gotResult = true;
-          finishAnalysis(data);
+          completeInvestigation(data);
+          setTimeout(() => finishAnalysis(data), 650);
         } else if (eventName === "error") {
           gotError = true;
-          errorMessage = data.detail || data.message || "Erreur pendant l'analyse en direct.";
         }
       }
     }
 
-    if (gotError) {
-      throw new Error(errorMessage || "Erreur lors de la vérification en direct.");
-    }
-
-    return gotResult;
+    if (gotResult) return true;
+    if (gotError) { submitBtn.disabled = false; traceSection.hidden = true; showError(state.lang === "fr" ? "La vérification en direct a échoué. Nouvelle tentative..." : "Live verification failed. Retrying..."); return false; }
+    return false;
   }
 
   function finishAnalysis(data) {
-    if (traceSection) {
-      traceSection.hidden = true;
-      traceSection.classList.remove("is-streaming");
-    }
-    if (submitBtn) submitBtn.disabled = false;
+    traceSection.hidden = true;
+    traceSection.classList.remove("is-streaming");
+    submitBtn.disabled = false;
     renderDossier(data);
     completeInvestigation(data);
     bumpStats((data.sources || []).length, data.verdict);
     saveHistoryEntry(data);
   }
 
-  $("#btn-again")?.addEventListener("click", () => {
-    if (dossier) dossier.hidden = true;
+  $("#btn-again").addEventListener("click", () => {
+    dossier.hidden = true;
     window.scrollTo({ top: 0, behavior: "smooth" });
   });
 
-  if (form) {
-    form.addEventListener("keydown", (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-        e.preventDefault();
-        form.requestSubmit();
-      }
-    });
-  }
+  // keyboard shortcut: Ctrl/Cmd+Enter submits from anywhere in the form
+  form.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      e.preventDefault();
+      form.requestSubmit();
+    }
+  });
 
   // ---------------------------------------------------------------- copy dossier
   let currentDossierData = null;
 
-  $("#btn-copy")?.addEventListener("click", async () => {
-    const text = dossier?.dataset.shareText || "";
+  $("#btn-copy").addEventListener("click", async () => {
+    const text = $("#dossier").dataset.shareText || "";
     try {
       await navigator.clipboard.writeText(text);
       showToast(state.lang === "fr" ? "Dossier copié dans le presse-papier !" : "Dossier copied to clipboard!");
@@ -634,7 +596,7 @@
   });
 
   // ---------------------------------------------------------------- export dossier
-  $("#btn-export-json")?.addEventListener("click", () => {
+  $("#btn-export-json").addEventListener("click", () => {
     if (!currentDossierData) {
       showToast(state.lang === "fr" ? "Aucun dossier à exporter." : "No dossier to export.");
       return;
@@ -650,7 +612,7 @@
     showToast(state.lang === "fr" ? "Dossier exporté en JSON ✓" : "Dossier exported as JSON ✓");
   });
 
-  $("#btn-export-pdf")?.addEventListener("click", () => {
+  $("#btn-export-pdf").addEventListener("click", () => {
     if (!currentDossierData) {
       showToast(state.lang === "fr" ? "Aucun dossier à exporter." : "No dossier to export.");
       return;
@@ -666,18 +628,17 @@
     showToast(state.lang === "fr" ? "Dossier exporté en HTML ✓" : "Dossier exported as HTML ✓");
   });
 
-  $("#btn-share")?.addEventListener("click", async () => {
+  $("#btn-share").addEventListener("click", async () => {
     if (!currentDossierData) {
       showToast(state.lang === "fr" ? "Aucun dossier à partager." : "No dossier to share.");
       return;
     }
-    const text = dossier?.dataset.shareText || "";
+    const text = $("#dossier").dataset.shareText || "";
     if (navigator.share) {
       try {
         await navigator.share({
           title: "Truth Checker",
-          text: text.split("
-")[0],
+          text: text.split("\n")[0],
           url: window.location.href,
         });
       } catch (err) {
@@ -770,6 +731,7 @@
   let currentSources = [];
 
   // ================================================================ Truth Lab
+  const PASSPORT_KEY = "truthchecker_passport_v1";
   const DEMO_KEY = "truthchecker_demo_mode";
 
   function passportStats() {
@@ -792,30 +754,25 @@
     const el = document.getElementById(id);
     if (el?.showModal) el.showModal(); else el?.classList.add("is-open");
   }
-
   function closeModal(id) {
     const el = document.getElementById(id);
     if (el?.close) el.close(); else el?.classList.remove("is-open");
   }
-
   $$("[data-close]").forEach(btn => btn.addEventListener("click", () => closeModal(btn.dataset.close)));
 
   function renderPassport() {
     const s = passportStats();
     const percent = s.checks ? Math.round((s.verified / s.checks) * 100) : 0;
-    const content = $("#passport-content");
-    if (content) {
-      content.innerHTML = `
-        <div class="passport-hero"><div class="passport-orbit">🛡️</div><div><strong>Explorateur de vérité</strong><p>Votre activité reste locale sur cet appareil.</p></div></div>
-        <div class="passport-grid">
-          <div><span>Vérifications</span><strong>${s.checks}</strong></div>
-          <div><span>Sources consultées</span><strong>${s.sources}</strong></div>
-          <div><span>Verdicts vérifiés</span><strong>${s.verified}</strong></div>
-          <div><span>Challenges</span><strong>${s.challenged}</strong></div>
-        </div>
-        <div class="passport-progress"><div><span>Progression EMI</span><strong>${percent}%</strong></div><div class="progress-track"><i style="width:${percent}%"></i></div></div>
-        <div class="badge-list">${s.badges.length ? s.badges.map(b => `<span>${b[0]} ${escapeHtml(b[1])}</span>`).join("") : `<span class="muted">Vérifiez votre première information pour débloquer un badge.</span>`}</div>`;
-    }
+    $("#passport-content").innerHTML = `
+      <div class="passport-hero"><div class="passport-orbit">🛡️</div><div><strong>Explorateur de vérité</strong><p>Votre activité reste locale sur cet appareil.</p></div></div>
+      <div class="passport-grid">
+        <div><span>Vérifications</span><strong>${s.checks}</strong></div>
+        <div><span>Sources consultées</span><strong>${s.sources}</strong></div>
+        <div><span>Verdicts vérifiés</span><strong>${s.verified}</strong></div>
+        <div><span>Challenges</span><strong>${s.challenged}</strong></div>
+      </div>
+      <div class="passport-progress"><div><span>Progression EMI</span><strong>${percent}%</strong></div><div class="progress-track"><i style="width:${percent}%"></i></div></div>
+      <div class="badge-list">${s.badges.length ? s.badges.map(b => `<span>${b[0]} ${escapeHtml(b[1])}</span>`).join("") : `<span class="muted">Vérifiez votre première information pour débloquer un badge.</span>`}</div>`;
     openModal("passport-modal");
   }
 
@@ -831,30 +788,26 @@
     };
     const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(challenge))));
     const shareUrl = `${location.origin}${location.pathname}#challenge=${encoded}`;
-    const content = $("#challenge-content");
-    if (content) {
-      content.innerHTML = `
-        <div class="challenge-card">
-          <span class="eyebrow">DÉFI #${challenge.id.slice(-6)}</span>
-          <h3>${escapeHtml(challenge.claim)}</h3>
-          <p>Choisis ton verdict avant de montrer les preuves à ton ami.</p>
-          <div class="challenge-choices">
-            <button data-choice="vrai">🟢 VRAI</button><button data-choice="faux">🔴 FAUX</button><button data-choice="partiellement_vrai">🟡 À NUANCER</button>
-          </div>
-          <div class="challenge-reveal" hidden><strong>Verdict TruthChecker : ${escapeHtml(labels[challenge.verdict] || challenge.verdict)}</strong><span>Evidence Score : ${challenge.score}/100</span><p>Le but est de comparer votre démarche avec les preuves, pas seulement de deviner.</p></div>
-          <div class="challenge-share"><input readonly value="${escapeAttr(shareUrl)}"/><button id="copy-challenge">Copier le défi</button></div>
-        </div>`;
-      content.querySelectorAll("[data-choice]").forEach(btn => btn.addEventListener("click", () => {
-        const reveal = content.querySelector(".challenge-reveal");
-        if (reveal) reveal.hidden = false;
-        const correct = btn.dataset.choice === challenge.verdict;
-        localStorage.setItem("truthchecker_challenges", String(Number(localStorage.getItem("truthchecker_challenges") || 0) + 1));
-        showToast(correct ? "Bonne lecture des preuves ✓" : "Compare maintenant avec les preuves.");
-      }));
-      $("#copy-challenge")?.addEventListener("click", async () => {
-        try { await navigator.clipboard.writeText(shareUrl); showToast("Défi copié ✓"); } catch { showToast("Copiez le lien manuellement."); }
-      });
-    }
+    $("#challenge-content").innerHTML = `
+      <div class="challenge-card">
+        <span class="eyebrow">DÉFI #${challenge.id.slice(-6)}</span>
+        <h3>${escapeHtml(challenge.claim)}</h3>
+        <p>Choisis ton verdict avant de montrer les preuves à ton ami.</p>
+        <div class="challenge-choices">
+          <button data-choice="vrai">🟢 VRAI</button><button data-choice="faux">🔴 FAUX</button><button data-choice="partiellement_vrai">🟡 À NUANCER</button>
+        </div>
+        <div class="challenge-reveal" hidden><strong>Verdict TruthChecker : ${escapeHtml(labels[challenge.verdict] || challenge.verdict)}</strong><span>Evidence Score : ${challenge.score}/100</span><p>Le but est de comparer votre démarche avec les preuves, pas seulement de deviner.</p></div>
+        <div class="challenge-share"><input readonly value="${escapeAttr(shareUrl)}"/><button id="copy-challenge">Copier le défi</button></div>
+      </div>`;
+    $("#challenge-content").querySelectorAll("[data-choice]").forEach(btn => btn.addEventListener("click", () => {
+      $("#challenge-content .challenge-reveal").hidden = false;
+      const correct = btn.dataset.choice === challenge.verdict;
+      localStorage.setItem("truthchecker_challenges", String(Number(localStorage.getItem("truthchecker_challenges") || 0) + 1));
+      showToast(correct ? "Bonne lecture des preuves ✓" : "Compare maintenant avec les preuves.");
+    }));
+    $("#copy-challenge").addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(shareUrl); showToast("Défi copié ✓"); } catch { showToast("Copiez le lien manuellement."); }
+    });
     openModal("challenge-modal");
   }
 
@@ -877,7 +830,6 @@
       applyFilter(btn.dataset.filter);
     });
   });
-
   function applyFilter(filter) {
     $$("#evidence-list .evidence__item").forEach((li) => {
       li.classList.toggle("is-hidden", filter !== "all" && li.dataset.stance !== filter);
@@ -892,14 +844,12 @@
     currentDossierData = data;
     data.__ref = data.__ref || Date.now();
 
-    if ($("#dossier-ref")) $("#dossier-ref").textContent = `DOSSIER #${String(opts.fromHistory ? data.__ref : Date.now()).slice(-6)}`;
+    $("#dossier-ref").textContent = `DOSSIER #${String(opts.fromHistory ? data.__ref : Date.now()).slice(-6)}`;
 
     const stamp = $("#stamp");
-    if (stamp) {
-      stamp.textContent = labels[data.verdict] || data.verdict;
-      stamp.dataset.verdict = data.verdict;
-      stamp.style.animation = "none"; void stamp.offsetWidth; stamp.style.animation = "";
-    }
+    stamp.textContent = labels[data.verdict] || data.verdict;
+    stamp.dataset.verdict = data.verdict;
+    stamp.style.animation = "none"; void stamp.offsetWidth; stamp.style.animation = "";
 
     document.documentElement.style.setProperty("--verdict-glow", hexGlow(data.verdict));
 
@@ -907,23 +857,19 @@
     const circumference = 251;
     const gaugeValue = $("#gauge-value");
     const color = scoreColor(score);
-    if (gaugeValue) {
-      gaugeValue.style.stroke = color;
-      gaugeValue.style.transition = "none";
-      gaugeValue.style.strokeDashoffset = String(circumference);
-      void gaugeValue.offsetWidth;
-      gaugeValue.style.transition = "";
-      gaugeValue.style.strokeDashoffset = String(circumference * (1 - score / 100));
-    }
+    gaugeValue.style.stroke = color;
+    gaugeValue.style.transition = "none";
+    gaugeValue.style.strokeDashoffset = String(circumference);
+    void gaugeValue.offsetWidth;
+    gaugeValue.style.transition = "";
+    gaugeValue.style.strokeDashoffset = String(circumference * (1 - score / 100));
 
-    if ($("#gauge-score")) {
-      $("#gauge-score").textContent = score;
-      $("#gauge-score").style.color = color;
-    }
+    $("#gauge-score").textContent = score;
+    $("#gauge-score").style.color = color;
 
-    if ($("#headline-claim")) $("#headline-claim").textContent = data.headline_claim || "—";
-    if ($("#summary-text")) $("#summary-text").textContent = data.summary || "";
-    if ($("#explanation-text")) $("#explanation-text").textContent = data.explanation || "";
+    $("#headline-claim").textContent = data.headline_claim || "—";
+    $("#summary-text").textContent = data.summary || "";
+    $("#explanation-text").textContent = data.explanation || "";
 
     renderMetaCards(data);
     renderEvidenceSignal(data);
@@ -937,58 +883,49 @@
     setBreakdown("bd-cons", bd.consensus);
 
     const correctionBlock = $("#correction-block");
-    if (correctionBlock) {
-      if (data.correction) {
-        const correctionText = typeof data.correction === "string" ? data.correction : (data.correction.text || "");
-        const corrSources = (data.sources || []).filter(s => s.stance === "contredit").slice(0, 3);
-        if ($("#correction-text")) {
-          $("#correction-text").innerHTML = `${escapeHtml(correctionText)}${corrSources.length ? `<div class="correction-sources"><strong>Sources de la correction</strong>${corrSources.map(s => `<a href="${escapeAttr(s.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(s.title || s.domain)}</a>`).join("")}</div>` : ""}`;
-        }
-        correctionBlock.hidden = !correctionText;
-      } else { correctionBlock.hidden = true; }
-    }
+    if (data.correction) {
+      const correctionText = typeof data.correction === "string" ? data.correction : (data.correction.text || "");
+      const corrSources = (data.sources || []).filter(s => s.stance === "contredit").slice(0, 3);
+      $("#correction-text").innerHTML = `${escapeHtml(correctionText)}${corrSources.length ? `<div class="correction-sources"><strong>Sources de la correction</strong>${corrSources.map(s => `<a href="${escapeAttr(s.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(s.title || s.domain)}</a>`).join("")}</div>` : ""}`;
+      correctionBlock.hidden = !correctionText;
+    } else { correctionBlock.hidden = true; }
 
     currentSources = data.sources || [];
     const list = $("#evidence-list");
-    if (list) {
-      list.innerHTML = "";
-      if (currentSources.length === 0) {
-        list.innerHTML = `<li class="evidence__empty">${lang === "fr" ? "Aucune source exploitable n'a été trouvée pour cette recherche." : "No usable source was found for this search."}</li>`;
-      } else {
-        currentSources.forEach((s) => {
-          const li = document.createElement("li");
-          li.className = "evidence__item";
-          li.id = `evidence-source-${currentSources.indexOf(s)}`;
-          li.dataset.stance = s.stance || "contexte";
-          const quality = Math.max(0, Math.min(100, Number(s.authority_score ?? 0)));
-          const freshness = s.freshness || "inconnu";
-          li.innerHTML = `
-            <span class="evidence__marker">${STANCE_ICON[s.stance] || "•"}</span>
-            <p class="evidence__title"><a href="${escapeAttr(s.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(s.title || s.url)}</a></p>
-            <span class="evidence__domain">${escapeHtml(s.domain || "")} · qualité ${quality}/100 · ${escapeHtml(freshness)}</span>
-            <p class="evidence__excerpt">${escapeHtml(s.excerpt || "")}</p>
-          `;
-          list.appendChild(li);
-        });
-      }
+    list.innerHTML = "";
+    if (currentSources.length === 0) {
+      list.innerHTML = `<li class="evidence__empty">${lang === "fr" ? "Aucune source exploitable n'a été trouvée pour cette recherche." : "No usable source was found for this search."}</li>`;
+    } else {
+      currentSources.forEach((s) => {
+        const li = document.createElement("li");
+        li.className = "evidence__item";
+        li.id = `evidence-source-${currentSources.indexOf(s)}`;
+        li.dataset.stance = s.stance || "contexte";
+        const quality = Math.max(0, Math.min(100, Number(s.authority_score ?? 0)));
+        const freshness = s.freshness || "inconnu";
+        li.innerHTML = `
+          <span class="evidence__marker">${STANCE_ICON[s.stance] || "•"}</span>
+          <p class="evidence__title"><a href="${escapeAttr(s.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(s.title || s.url)}</a></p>
+          <span class="evidence__domain">${escapeHtml(s.domain || "")} · qualité ${quality}/100 · ${escapeHtml(freshness)}</span>
+          <p class="evidence__excerpt">${escapeHtml(s.excerpt || "")}</p>
+        `;
+        list.appendChild(li);
+      });
     }
     $$("#evidence-filters .filter-btn").forEach((b) => b.classList.toggle("is-active", b.dataset.filter === "all"));
     applyFilter("all");
 
     const footer = $("#dossier-footer");
-    if (footer) {
-      const n = data.searches_performed ?? 0;
-      const ms = data.elapsed_ms ?? 0;
-      footer.textContent = lang === "fr"
-        ? `${n} recherche${n > 1 ? "s" : ""} effectuée${n > 1 ? "s" : ""} sur le web · analyse en ${(ms / 1000).toFixed(1)}s`
-        : `${n} web search${n > 1 ? "es" : ""} performed · analyzed in ${(ms / 1000).toFixed(1)}s`;
-    }
+    const n = data.searches_performed ?? 0;
+    const ms = data.elapsed_ms ?? 0;
+    footer.textContent = lang === "fr"
+      ? `${n} recherche${n > 1 ? "s" : ""} effectuée${n > 1 ? "s" : ""} sur le web · analyse en ${(ms / 1000).toFixed(1)}s`
+      : `${n} web search${n > 1 ? "es" : ""} performed · analyzed in ${(ms / 1000).toFixed(1)}s`;
 
-    if (dossier) {
-      dossier.dataset.shareText = buildShareText(data, labels);
-      dossier.hidden = false;
-      if (!opts.fromHistory) dossier.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
+    $("#dossier").dataset.shareText = buildShareText(data, labels);
+
+    dossier.hidden = false;
+    if (!opts.fromHistory) dossier.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function renderMetaCards(data) {
@@ -1036,17 +973,13 @@
     fill.style.width = `${score}%`;
     marker.style.left = `calc(${score}% - 5px)`;
     fill.style.background = `linear-gradient(90deg, ${scoreColor(Math.max(0, score - 35))}, ${scoreColor(score)})`;
-    if (status) {
-      status.textContent = score >= 70 ? "EVIDENCE FORTE" : score >= 40 ? "EVIDENCE MIXTE" : "EVIDENCE FAIBLE";
-      status.dataset.level = score >= 70 ? "strong" : score >= 40 ? "mixed" : "weak";
-    }
-    if (title) {
-      title.textContent = score >= 70
-        ? "Les preuves disponibles soutiennent fortement le verdict."
-        : score >= 40
-          ? "Les preuves sont partagées ou nécessitent une lecture contextuelle."
-          : "Les preuves disponibles sont faibles, contradictoires ou insuffisantes.";
-    }
+    status.textContent = score >= 70 ? "EVIDENCE FORTE" : score >= 40 ? "EVIDENCE MIXTE" : "EVIDENCE FAIBLE";
+    status.dataset.level = score >= 70 ? "strong" : score >= 40 ? "mixed" : "weak";
+    title.textContent = score >= 70
+      ? "Les preuves disponibles soutiennent fortement le verdict."
+      : score >= 40
+        ? "Les preuves sont partagées ou nécessitent une lecture contextuelle."
+        : "Les preuves disponibles sont faibles, contradictoires ou insuffisantes.";
   }
 
   function renderAuditTimeline(data) {
@@ -1108,12 +1041,9 @@
   function setBreakdown(prefix, value) {
     const v = Math.max(0, Math.min(100, Number(value) || 0));
     const fill = $(`#${prefix}`);
-    if (fill) {
-      fill.style.width = `${v}%`;
-      fill.style.background = scoreColor(v);
-    }
-    const valEl = $(`#${prefix}-val`);
-    if (valEl) valEl.textContent = String(v);
+    fill.style.width = `${v}%`;
+    fill.style.background = scoreColor(v);
+    $(`#${prefix}-val`).textContent = String(v);
   }
 
   function hexGlow(verdict) {
@@ -1139,8 +1069,7 @@
       lines.push("", "Sources :");
       data.sources.forEach((s) => lines.push(`- ${s.title} — ${s.url}`));
     }
-    return lines.join("
-");
+    return lines.join("\n");
   }
 
   function escapeHtml(str) {
@@ -1149,7 +1078,7 @@
   function escapeAttr(str) { return escapeHtml(str).replace(/"/g, "&quot;"); }
 })();
 
-// Landing page navigation
+// Landing page navigation: keep the verification workflow in the same SPA.
 document.querySelectorAll('a[href^="#"]').forEach((link) => {
   link.addEventListener('click', (event) => {
     const target = document.querySelector(link.getAttribute('href'));
