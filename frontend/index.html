@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Truth Checker — Vérifiez l'information</title>
+<meta name="theme-color" content="#070b1c" />
+<meta name="description" content="Truth Checker analyse un texte, un article ou une image en temps réel, cherche dans le monde entier des sources fiables, et vous donne un score de fiabilité vérifiable." />
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="app" id="app">
+
+  <!-- ===== TOP BAR ===== -->
+  <header class="topbar">
+    <div class="topbar__rule"></div>
+    <div class="topbar__row">
+      <div class="topbar__brand">
+        <span class="live-dot" aria-hidden="true"></span>
+        <span class="topbar__wordmark">Truth&nbsp;Checker</span>
+      </div>
+      <nav class="topnav" aria-label="Navigation principale">
+        <a href="#verify-console">Vérifier</a>
+        <a href="#method">Méthode </a>
+        <a href="#dossier">Historique</a>
+      </nav>
+      <div class="topbar__right">
+        <div class="theme-switch" role="group" aria-label="Mode d'affichage">
+          <button type="button" class="theme-btn" id="theme-toggle" title="Basculer le thème" aria-label="Mode sombre/clair">🌙</button>
+        </div>
+        <div class="lang-switch" role="group" aria-label="Langue de la réponse">
+          <button type="button" class="lang-btn is-active" data-lang="fr">FR</button>
+          <button type="button" class="lang-btn" data-lang="en">EN</button>
+          <button type="button" class="lang-btn" data-lang="mg">MG</button>
+        </div>
+        <div class="topbar__date" id="today-date"></div>
+  <div class="account-box" id="account-box">
+    <span class="account-email" id="account-email"></span>
+    <button type="button" class="account-btn" id="logout-btn">Déconnexion</button>
+  </div>
+
+      </div>
+    </div>
+  </header>
+
+  <!-- ===== HERO / LANDING ===== -->
+  <section class="hero" id="top">
+    <div class="hero__copy">
+      <div class="eyebrow-line"><span>IA</span><i></i><span>PREUVES WEB</span><i></i><span>ÉDUCATION AUX MÉDIAS</span></div>
+      <h1>Verify before.<br><span>You trust.</span></h1>
+      <p>Truth Checker cherche des preuves sur le web en temps réel, compare les sources entre elles et explique exactement ce que les preuves indiquent réellement.</p>
+      
+      <div class="hero__actions">
+        <a class="hero-btn hero-btn--primary" href="#verify-console">Commencer une vérification <b>→</b></a>
+        <a class="hero-btn hero-btn--ghost" href="#method">Voir comment ça marche</a>
+      </div>
+      <div class="hero__chips">
+        <span>✦ Graphe de preuves</span>
+        <span>◈ Contexte vérifié</span>
+        <span>◎ FR · EN · MG</span>
+      </div>
+    </div>
+
+    <div class="hero__visual" aria-label="Aperçu du moteur de preuves">
+      <div class="proof-card">
+        <div class="proof-card__top"><span class="proof-badge">Source primaire ✓</span><strong>92<small>/100</small></strong></div>
+        <div class="proof-label">Confiance des preuves</div>
+        <div class="proof-meter"><span style="width:92%"></span></div>
+        <div class="proof-label proof-label--space">Preuves trouvées</div>
+        <div class="proof-tags"><span>Officiel</span><span>Science</span><span>Reuters</span><span>+8</span></div>
+        <div class="mini-graph">
+          <div class="mini-node mini-node--claim">AFFIRMATION</div>
+          <i class="edge edge--1"></i><i class="edge edge--2"></i><i class="edge edge--3"></i><i class="edge edge--4"></i>
+          <b class="node-dot node-dot--green n1"></b><b class="node-dot node-dot--red n2"></b><b class="node-dot node-dot--blue n3"></b><b class="node-dot node-dot--green n4"></b>
+        </div>
+        <div class="proof-card__foot"><span class="danger-pill">Contradictions 0</span><span class="success-pill">Contexte vérifié ✓</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== VALUE PROPOSITION ===== -->
+  <section class="feature-strip" id="method">
+    <article><span class="feature-icon feature-icon--blue">•</span><h3>Lis le contenu</h3><p>Texte, article ou image : Truth Checker identifie l'affirmation vérifiable qui se cache derrière.</p></article>
+    <article><span class="feature-icon feature-icon--purple">✦</span><h3>Cherche dans le monde entier</h3><p>Recherche web en direct — agences de presse, sources officielles, scientifiques et fact-checkers.</p></article>
+    <article><span class="feature-icon feature-icon--green">✓</span><h3>Compare les sources</h3><p>Les sources sont confrontées entre elles pour distinguer confirmation, contradiction et contexte.</p></article>
+    <article><span class="feature-icon feature-icon--red">!</span><h3>Rendre un verdict vérifiable</h3><p>Score de fiabilité, explication claire et preuves cliquables : le raisonnement reste à l'appui.</p></article>
+  </section>
+
+  <div class="layout">
+
+    <!-- ===== SIDEBAR ===== -->
+    <aside class="sidebar">
+      <section class="card intro-card">
+        <p class="intro-card__lede">
+          Collez un texte, une URL ou une image. Truth&nbsp;Checker interroge le web en direct —
+          agences de presse, sources officielles, vérificateurs de faits, science — et montre
+          <em>exactement</em> les preuves derrière chaque verdict.
+        </p>
+        <div class="intro-card__stats-grid">
+          <div class="stat-item">
+            <dt id="stat-checks">0</dt>
+            <dd>vérifications</dd>
+          </div>
+          <div class="stat-item">
+            <dt id="stat-sources">0</dt>
+            <dd>sources</dd>
+          </div>
+          <div class="stat-item">
+            <dt id="stat-verified">0</dt>
+            <dd>vérifiées</dd>
+          </div>
+          <div class="stat-item">
+            <dt id="stat-false">0</dt>
+            <dd>fausses</dd>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 class="card__title">Essayer avec un exemple</h2>
+        <div class="chips" id="example-chips">
+          <button type="button" class="chip" data-example="text|Boire de l'eau citronnée le matin élimine les toxines du corps.">💧 Eau citronnée &amp; toxines</button>
+          <button type="button" class="chip" data-example="text|La Terre se réchauffe plus vite depuis 2015 que durant toute autre période de l'histoire connue.">🌡️ Réchauffement depuis 2015</button>
+          <button type="button" class="chip" data-example="text|Le vaccin contre la grippe peut donner la grippe.">💉 Vaccin grippe</button>
+          <button type="button" class="chip" data-example="text|5G et santé : les antennes 5G affaiblissent le système immunitaire.">📡 5G &amp; immunité</button>
+        </div>
+      </section>
+
+      <section class="card tools-card">
+        <h2 class="card__title">Truth Lab</h2>
+        <div class="tool-grid">
+          <button type="button" class="tool-btn" id="btn-passport">🪪 <span>Truth Passport</span><small>Votre progression EMI</small></button>
+          <button type="button" class="tool-btn" id="btn-challenge">⚔️ <span>Challenge Amis</span><small>Défiez vos amis</small></button>
+          <button type="button" class="tool-btn" id="btn-demo">🎬 <span>Mode Jury</span><small>Présentation immersive</small></button>
+        </div>
+      </section>
+
+      <section class="card history-card">
+        <div class="card__title-row">
+          <h2 class="card__title">Historique</h2>
+          <button type="button" class="link-btn" id="clear-history" hidden>Effacer</button>
+        </div>
+        <ul class="history-list" id="history-list">
+          <li class="history-empty">Vos dossiers récents apparaîtront ici — rien stocké ailleurs que sur cet appareil.</li>
+        </ul>
+      </section>
+    </aside>
+
+    <!-- ===== MAIN ===== -->
+    <main class="main">
+      <section class="console" id="verify-console" aria-label="Soumettre un contenu à vérifier">
+
+        <div class="tabs" role="tablist" aria-label="Type de contenu">
+          <button class="tab is-active" role="tab" aria-selected="true" data-type="text">
+            <span class="tab__index">01</span> Texte (Soratra)
+          </button>
+          <button class="tab" role="tab" aria-selected="false" data-type="url">
+            <span class="tab__index">02</span> URL / Article (Rohy)
+          </button>
+          <button class="tab" role="tab" aria-selected="false" data-type="image">
+            <span class="tab__index">03</span> Image (Sary)
+          </button>
+        </div>
+
+        <form id="analyze-form" class="console__body">
+
+          <div class="panel is-active" data-panel="text">
+            <div class="field-label-row">
+              <label class="field-label" for="input-text">Affirmation ou extrait à vérifier</label>
+              <button type="button" class="link-btn" id="paste-text">Coller</button>
+            </div>
+            <textarea id="input-text" rows="5" maxlength="2000"
+              placeholder="Ex : « S. »"></textarea>
+            <div class="field-hint"><span id="text-count">0</span>/2000</div>
+          </div>
+
+          <div class="panel" data-panel="url">
+            <div class="field-label-row">
+              <label class="field-label" for="input-url">Lien de l'article ou de la publication</label>
+              <button type="button" class="link-btn" id="paste-url">Coller</button>
+            </div>
+            <input id="input-url" type="url" inputmode="url"
+              placeholder="https://exemple.com/article-a-verifier" />
+            <div class="field-hint">Truth Checker lit l'article puis vérifie ses affirmations principales.</div>
+          </div>
+
+          <div class="panel" data-panel="image">
+            <label class="field-label" for="input-image">Capture d'écran, publication ou affiche</label>
+            <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Choisir une image">
+              <div class="dropzone__empty" id="dropzone-empty">
+                <span class="dropzone__icon" aria-hidden="true">＋</span>
+                <span>Déposez une image ou cliquez pour en choisir une</span>
+                <span class="field-hint">JPG, PNG, WEBP — 8 Mo max</span>
+              </div>
+              <img id="dropzone-preview" alt="Aperçu de l'image importée" hidden />
+              <button type="button" class="dropzone__remove" id="dropzone-remove" hidden aria-label="Retirer l'image">✕</button>
+            </div>
+            <input id="input-image" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+            <label class="field-label field-label--secondary" for="input-image-caption">Contexte (optionnel)</label>
+            <input id="input-image-caption" type="text" maxlength="300"
+              placeholder="D'où vient cette image ? Que prétend-elle montrer ? Inona ny azo Ambara ?" />
+          </div>
+
+          <div class="console__footer">
+            <span class="kbd-hint"><kbd>Ctrl</kbd>+<kbd>Entrée</kbd> pour analyser</span>
+            <button type="submit" class="btn-analyze" id="submit-btn">
+              <span>Analyser</span>
+              <span class="btn-analyze__arrow" aria-hidden="true">→</span>
+            </button>
+          </div>
+
+          <p class="error-msg" id="error-msg" role="alert" hidden></p>
+        </form>
+      </section>
+
+      <!-- ===== LIVE VERIFICATION TRACE ===== -->
+      <section class="trace" id="trace" hidden aria-live="polite">
+        <div class="trace__bar-wrap">
+          <div class="trace__bar" id="trace-bar"></div>
+        </div>
+        <ol class="trace__steps" id="trace-steps">
+          <li data-step="read"><span class="trace__dot"></span><span class="trace__text">Lecture du contenu</span></li>
+          <li data-step="search"><span class="trace__dot"></span><span class="trace__text">Recherche de sources dans le monde entier</span></li>
+          <li data-step="compare"><span class="trace__dot"></span><span class="trace__text">Comparaison des sources entre elles</span></li>
+          <li data-step="score"><span class="trace__dot"></span><span class="trace__text">Rédaction du verdict</span></li>
+        </ol>
+        <div class="investigation-board" id="investigation-board" aria-label="Enquête en direct">
+          <div class="investigation-board__header">
+            <div><span class="section-kicker">LIVE INVESTIGATION</span><strong id="investigation-status">Connexion au moteur de preuves…</strong></div>
+            <span class="investigation-live"><i></i> LIVE</span>
+          </div>
+          <div class="investigation-board__body">
+            <div class="investigation-core" id="investigation-core">
+              <span class="investigation-core__ring"></span>
+              <span class="investigation-core__icon">⌁</span>
+              <strong id="investigation-core-label">CLAIM</strong>
+              <small id="investigation-core-detail">En attente de l'analyse</small>
+            </div>
+            <div class="investigation-nodes" id="investigation-nodes">
+              <div class="investigation-node" data-node="read"><i></i><span>Lecture</span><small>—</small></div>
+              <div class="investigation-node" data-node="search"><i></i><span>Recherche</span><small>0 requête</small></div>
+              <div class="investigation-node" data-node="compare"><i></i><span>Confrontation</span><small>0 source</small></div>
+              <div class="investigation-node" data-node="score"><i></i><span>Verdict</span><small>En attente</small></div>
+            </div>
+          </div>
+          <div class="investigation-feed" id="investigation-feed" aria-live="polite"></div>
+        </div>
+        <ul class="trace__queries" id="trace-queries" aria-label="Recherches effectuées en direct"></ul>
+      </section>
+
+      <!-- ===== RESULTS DOSSIER ===== -->
+      <section class="dossier" id="dossier" hidden aria-live="polite">
+
+        <div class="dossier__head">
+          <div class="dossier__ref" id="dossier-ref">DOSSIER #000000</div>
+          <div class="dossier__actions">
+            <button type="button" class="icon-btn" id="btn-share" title="Partager" aria-label="Partager">📤 Partager</button>
+            <button type="button" class="icon-btn" id="btn-export-json" title="Exporter JSON">📋 JSON</button>
+            <button type="button" class="icon-btn" id="btn-export-pdf" title="Exporter PDF">📄 PDF</button>
+            <button type="button" class="icon-btn" id="btn-copy" title="Copier le dossier">⧉ Copier</button>
+          </div>
+          <div class="stamp" id="stamp">VÉRIFIÉ</div>
+        </div>
+
+        <div class="dossier__top">
+          <div class="gauge-wrap">
+            <svg class="gauge" viewBox="0 0 200 120" aria-hidden="true">
+              <path class="gauge__track" d="M 20 110 A 80 80 0 0 1 180 110" />
+              <path class="gauge__value" id="gauge-value" d="M 20 110 A 80 80 0 0 1 180 110" />
+            </svg>
+            <div class="gauge__score" id="gauge-score">—</div>
+            <div class="gauge__label">score de fiabilité</div>
+          </div>
+
+          <div class="claim-block">
+            <div class="claim-block__eyebrow">Affirmation analysée</div>
+            <blockquote class="claim-block__text" id="headline-claim">—</blockquote>
+            <p class="claim-block__summary" id="summary-text"></p>
+          </div>
+        </div>
+
+        <div class="result-meta" id="result-meta" aria-label="Résumé des preuves"></div>
+
+        <section class="evidence-signal" id="evidence-signal" aria-label="Signal de vérification">
+          <div class="evidence-signal__head">
+            <div><span class="section-kicker">LIVE EVIDENCE SIGNAL</span><strong id="evidence-signal-title">Verdict construit à partir des preuves</strong></div>
+            <span class="signal-status" id="evidence-signal-status">ANALYSE TERMINÉE</span>
+          </div>
+          <div class="signal-track"><span id="signal-fill"></span><i id="signal-marker"></i></div>
+          <div class="signal-scale"><span>0 · faible</span><span>50 · mixte</span><span>100 · fort</span></div>
+        </section>
+
+        <section class="audit-timeline" aria-label="Traçabilité de la vérification">
+          <div class="section-heading-row"><h2 class="section-title">Comment le verdict a été construit</h2><span class="section-kicker">AUDIT TRAIL</span></div>
+          <div class="audit-timeline__grid" id="audit-timeline"></div>
+        </section>
+
+        <div class="breakdown">
+          <div class="breakdown__row">
+            <span class="breakdown__label">Fiabilité des sources</span>
+            <div class="breakdown__track"><div class="breakdown__fill" id="bd-source"></div></div>
+            <span class="breakdown__value" id="bd-source-val">—</span>
+          </div>
+          <div class="breakdown__row">
+            <span class="breakdown__label">Corroboration</span>
+            <div class="breakdown__track"><div class="breakdown__fill" id="bd-corr"></div></div>
+            <span class="breakdown__value" id="bd-corr-val">—</span>
+          </div>
+          <div class="breakdown__row">
+            <span class="breakdown__label">Consensus entre sources</span>
+            <div class="breakdown__track"><div class="breakdown__fill" id="bd-cons"></div></div>
+            <span class="breakdown__value" id="bd-cons-val">—</span>
+          </div>
+        </div>
+
+        <section class="claims-panel">
+          <div class="section-heading-row"><h2 class="section-title">Affirmations vérifiées</h2><span class="section-kicker">CLAIM BY CLAIM</span></div>
+          <div class="claims-list" id="claims-list"></div>
+        </section>
+
+        <section class="evidence-graph-panel">
+          <div class="section-heading-row"><h2 class="section-title">Carte des preuves</h2><span class="section-kicker">EVIDENCE MAP</span></div>
+          <div class="evidence-graph" id="evidence-graph"></div>
+        </section>
+
+        <div class="explanation">
+          <h2 class="section-title">Explication</h2>
+          <p id="explanation-text"></p>
+        </div>
+
+        <div class="correction" id="correction-block" hidden>
+          <h2 class="section-title">Ce que disent réellement les faits</h2>
+          <p id="correction-text"></p>
+        </div>
+
+        <div class="evidence">
+          <div class="evidence__head">
+            <h2 class="section-title">Preuves &amp; sources</h2>
+            <div class="evidence__filters" id="evidence-filters" role="group" aria-label="Filtrer les sources">
+              <button type="button" class="filter-btn is-active" data-filter="all">Toutes</button>
+              <button type="button" class="filter-btn" data-filter="confirme">Confirment</button>
+              <button type="button" class="filter-btn" data-filter="contredit">Contredisent</button>
+              <button type="button" class="filter-btn" data-filter="contexte">Contexte</button>
+            </div>
+          </div>
+          <ol class="evidence__list" id="evidence-list"></ol>
+        </div>
+
+        <div class="dossier__footer" id="dossier-footer"></div>
+
+        <div class="result-actions">
+          <button type="button" class="btn-secondary" id="btn-result-challenge">⚔️ Créer un challenge</button>
+          <button type="button" class="btn-secondary" id="btn-result-passport">🪪 Voir mon Passport</button>
+          <button type="button" class="btn-again" id="btn-again">↺ Vérifier autre chose</button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <footer class="site-footer">
+    <p>
+      Hackathon Jeunesse 2026 de l'UNESCO —
+      « Faites votre part : les jeunes façonnent l'avenir de l'éducation aux médias et à l'information ».
+    </p>
+    <p class="site-footer__note">
+      Truth Checker est un outil d'aide à la vérification :
+      croisez toujours les sources et gardez votre esprit critique.
+    </p>
+  </p> © Copyright 2026  </p>
+  </p>"RANDRIAMARO Juslain Fabio , RASOATSARANIAINA Nomenjanahary Maryah , NIRINIELA Lantoniaina Fitiavana Sarobidy" </p>
+  </footer>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<dialog class="modal" id="passport-modal">
+  <div class="modal__head"><div><span class="eyebrow">TRUTH LAB</span><h2>Truth Passport</h2></div><button class="modal__close" data-close="passport-modal">✕</button></div>
+  <div id="passport-content"></div>
+</dialog>
+
+<dialog class="modal" id="challenge-modal">
+  <div class="modal__head"><div><span class="eyebrow">TRUTH LAB</span><h2>Challenge Amis</h2></div><button class="modal__close" data-close="challenge-modal">✕</button></div>
+  <div id="challenge-content"></div>
+</dialog>
+
+
+<dialog class="auth-modal" id="auth-modal">
+  <div class="auth-modal__brand"><span class="live-dot"></span><span>TRUTH CHECKER</span></div>
+  <div class="auth-tabs">
+    <button class="auth-tab is-active" id="login-tab" type="button">Connexion</button>
+    <button class="auth-tab" id="register-tab" type="button">Créer un compte</button>
+  </div>
+  <form id="login-form" class="auth-form">
+    <h2>Bienvenue</h2><p>Connectez-vous pour utiliser le moteur de vérification.</p>
+    <label>Email<input id="login-email" type="email" autocomplete="email" required></label>
+    <label>Mot de passe<input id="login-password" type="password" autocomplete="current-password" required></label>
+    <button class="hero-btn hero-btn--primary auth-submit" type="submit">Se connecter</button>
+  </form>
+  <form id="register-form" class="auth-form" hidden>
+    <h2>Créer votre compte</h2><p>Votre compte reçoit automatiquement un accès sécurisé à Truth Checker.</p>
+    <label>Email<input id="register-email" type="email" autocomplete="email" required></label>
+    <label>Mot de passe<input id="register-password" type="password" autocomplete="new-password" minlength="8" required></label>
+    <small>8 caractères minimum, avec au moins une lettre et un chiffre.</small>
+    <button class="hero-btn hero-btn--primary auth-submit" type="submit">Créer mon compte</button>
+  </form>
+  <div class="auth-error" id="auth-error" hidden></div>
+  <div class="auth-note">La clé Groq reste sur le serveur et n'est jamais envoyée au navigateur.</div>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>
