@@ -1,101 +1,183 @@
-"""Dedicated Render entrypoint for Truth Checker.
+"""Offline demo entrypoint for Truth Checker.
 
-This module builds a clean FastAPI application around the production handlers
-from main.py. It deliberately does not use a catch-all frontend route: the
-frontend files are exposed through explicit GET routes so they can never
-shadow POST /api/* endpoints.
+This file is intentionally self-contained at the analysis layer: no Gemini,
+Google Search, Groq, OpenAI, or other external AI API is called. The existing
+local authentication and deterministic demo engine are reused.
 """
 from __future__ import annotations
 
 import os
-from fastapi import FastAPI
-from fastapi.responses import FileResponse
+import time
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi.responses import FileResponse, StreamingResponse
 
-import main as _main
+import main as real_main
+from app import auth
+from app.services import demo_mode
 
-# Reuse the production application middleware, models, auth dependencies and
-# handler functions, but create a clean router table for Render.
-app = FastAPI(title=_main.app.title, version=_main.app.version)
+app = FastAPI(title="Truth Checker Demo API", version="offline-demo-1")
 
-for middleware in _main.app.user_middleware:
-    app.user_middleware.append(middleware)
-app.middleware_stack = app.build_middleware_stack()
+# ---------------- Authentication ----------------
 
-# Import the production routes by re-registering the handler callables that
-# the frontend actually needs. API routes are intentionally registered before
-# any frontend routes.
+@app.post("/api/auth/register")
+def register(req: real_main.RegisterRequest):
+    email = req.email.strip().lower()
+    if not real_main.re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        raise HTTPException(400, "Adresse email invalide.")
+    if auth.get_user_by_email(email):
+        raise HTTPException(409, "Un compte existe déjà avec cet email.")
+    try:
+        user = auth.create_user(email, req.password)
+    except Exception:
+        raise HTTPException(409, "Impossible de créer ce compte.")
+    return {
+        "user": {
+            "id": user["id"],
+            "email": user["email"],
+            "plan": user["plan"],
+            "daily_limit": user["daily_limit"],
+        },
+        "token": auth.make_token(user["id"]),
+    }
+
+@app.post("/api/auth/login")
+def login(req: real_main.LoginRequest):
+    user = auth.verify_login(req.email, req.password)
+    if not user:
+        raise HTTPException(401, "Email ou mot de passe incorrect.")
+    return {
+        "user": {
+            "id": user["id"],
+            "email": user["email"],
+            "plan": user["plan"],
+            "daily_limit": user["daily_limit"],
+        },
+        "token": auth.make_token(user["id"]),
+    }
+
+@app.get("/api/auth/me")
+def me(user=Depends(real_main.current_user)):
+    return {
+        "id": user["id"],
+        "email": user["email"],
+        "plan": user["plan"],
+        "daily_limit": user["daily_limit"],
+        "used_today": auth.usage_today(user["id"]),
+    }
+
+@app.get("/api/auth/usage")
+def usage(user=Depends(real_main.current_user)):
+    used = auth.usage_today(user["id"])
+    limit = int(user["daily_limit"])
+    return {"used_today": used, "daily_limit": limit, "remaining": max(0, limit - used)}
+
+@app.get("/api/history")
+def history(user=Depends(real_main.current_user)):
+    return {"items": auth.history(user["id"], 50)}
+
+# ---------------- Offline demo analysis ----------------
+
+def _demo_result(req: real_main.AnalyzeRequest, user: dict):
+    if req.type != "image" and not req.content.strip():
+        raise HTTPException(400, "content field empty")
+
+    result = demo_mode.analyze(req.content, req.language)
+    result["metadata"] = {
+        **result.get("metadata", {}),
+        "demo_mode": True,
+        "provider": "offline-demo",
+        "gemini_used": False,
+        "external_api_used": False,
+        "user_id": user["id"],
+    }
+    return result
+
+@app.post("/api/analyze", response_model=real_main.AnalyzeResponse)
+def analyze(req: real_main.AnalyzeRequest, user=Depends(real_main.current_user)):
+    return real_main.AnalyzeResponse(**_demo_result(req, user))
+
+@app.post("/api/analyze/stream")
+def analyze_stream(req: real_main.AnalyzeRequest, user=Depends(real_main.current_user)):
+    if req.type != "image" and not req.content.strip():
+        raise HTTPException(400, "content empty")
+
+    def gen():
+        for label in (
+            "Analyzing content...",
+            "Identifying claims...",
+            "Searching demo evidence...",
+            "Comparing evidence...",
+            "Calculating confidence...",
+        ):
+            yield real_main._sse("step", {"label": label})
+            time.sleep(0.25)
+
+        yield real_main._sse("result", _demo_result(req, user))
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "X-TruthChecker-Demo": "true",
+        },
+    )
 
 @app.get("/api/health")
 def health():
-    return _main.health()
+    return {
+        "status": "ok",
+        "mode": "offline-demo",
+        "provider": "offline-demo",
+        "gemini_used": False,
+        "external_api_used": False,
+    }
 
-@app.post("/api/auth/register")
-def register(req: _main.RegisterRequest):
-    return _main.register(req)
-
-@app.post("/api/auth/login")
-def login(req: _main.LoginRequest):
-    return _main.login(req)
-
-@app.get("/api/auth/me")
-def me(user=_main.Depends(_main.current_user)):
-    return _main.me(user)
-
-@app.get("/api/auth/usage")
-def usage(user=_main.Depends(_main.current_user)):
-    return _main.usage(user)
-
-@app.get("/api/history")
-def history(user=_main.Depends(_main.current_user)):
-    return _main.history(user)
-
-@app.post("/api/analyze", response_model=_main.AnalyzeResponse)
-def analyze(req: _main.AnalyzeRequest, user=_main.Depends(_main.current_user)):
-    return _main.analyze(req, user)
-
-@app.post("/api/analyze/stream")
-def analyze_stream(req: _main.AnalyzeRequest, user=_main.Depends(_main.current_user)):
-    return _main.analyze_stream(req, user)
+@app.get("/api/demo/status")
+def demo_status():
+    return {
+        "enabled": True,
+        "presentation_mode": True,
+        "provider": "offline-demo",
+        "gemini_used": False,
+        "external_api_used": False,
+    }
 
 @app.get("/api/debug/routes", include_in_schema=False)
 def debug_routes():
-    return [
-        {
-            "index": i,
-            "path": getattr(route, "path", None),
-            "methods": sorted(getattr(route, "methods", set()) or []),
-            "name": getattr(route, "name", ""),
-            "type": route.__class__.__name__,
-        }
-        for i, route in enumerate(app.router.routes)
-        if getattr(route, "path", None)
-    ]
+    return {
+        "analysis": [
+            {"path": "/api/analyze", "methods": ["POST"], "provider": "offline-demo"},
+            {"path": "/api/analyze/stream", "methods": ["POST"], "provider": "offline-demo"},
+        ],
+        "gemini_used": False,
+        "external_api_used": False,
+    }
 
+# ---------------- Frontend, GET-only ----------------
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
 
-# Explicit GET-only frontend routes. No catch-all route is used.
 if os.path.isdir(FRONTEND_DIR):
-
     @app.get("/", include_in_schema=False)
-    async def frontend_index():
+    async def index():
         return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
 
     @app.get("/app.js", include_in_schema=False)
-    async def frontend_app_js():
+    async def app_js():
         return FileResponse(os.path.join(FRONTEND_DIR, "app.js"))
 
     @app.get("/styles.css", include_in_schema=False)
-    async def frontend_styles():
+    async def styles():
         return FileResponse(os.path.join(FRONTEND_DIR, "styles.css"))
 
-    # Common static assets referenced by the current frontend.
     @app.get("/favicon.ico", include_in_schema=False)
-    async def frontend_favicon():
+    async def favicon():
         path = os.path.join(FRONTEND_DIR, "favicon.ico")
         return FileResponse(path) if os.path.isfile(path) else FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
 
-print("[TruthChecker] Render entrypoint loaded")
-print("[TruthChecker] Clean API router created")
-print("[TruthChecker] POST /api/analyze registered")
-print("[TruthChecker] POST /api/analyze/stream registered")
-print("[TruthChecker] Explicit GET-only frontend routes registered")
+print("[TruthChecker] DEMO_MODE=offline-demo")
+print("[TruthChecker] GEMINI calls disabled")
+print("[TruthChecker] External AI APIs disabled")
+print("[TruthChecker] POST /api/analyze -> offline demo")
+print("[TruthChecker] POST /api/analyze/stream -> offline demo")
