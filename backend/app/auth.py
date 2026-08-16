@@ -75,8 +75,8 @@ def create_user(email: str, password: str):
     now = int(time.time())
     with _db() as db:
         cur = db.execute(
-            "INSERT INTO users(email,password_hash,created_at) VALUES(?,?,?)",
-            (email, _password_hash(password), now),
+            "INSERT INTO users(email,password_hash,created_at,daily_limit) VALUES(?,?,?,?)",
+            (email, _password_hash(password), now, FREE_DAILY_LIMIT),
         )
         user_id = cur.lastrowid
     return get_user(user_id)
