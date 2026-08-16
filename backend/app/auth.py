@@ -15,7 +15,8 @@ if not AUTH_SECRET:
     print("[WARNING] AUTH_SECRET is not set. A temporary secret was generated; set AUTH_SECRET in production.")
 
 TOKEN_TTL = int(os.getenv("AUTH_TOKEN_TTL", str(7 * 24 * 3600)))
-FREE_DAILY_LIMIT = int(os.getenv("TRUTHCHECKER_DAILY_LIMIT", "20"))
+FREE_DAILY_LIMIT = int(os.getenv("TRUTHCHECKER_DAILY_LIMIT", "1000"))
+ENFORCE_DAILY_LIMIT = os.getenv("TRUTHCHECKER_ENFORCE_DAILY_LIMIT", "0").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _db():
@@ -33,7 +34,7 @@ def init_db():
             email TEXT NOT NULL UNIQUE,
             password_hash TEXT NOT NULL,
             plan TEXT NOT NULL DEFAULT 'free',
-            daily_limit INTEGER NOT NULL DEFAULT 20,
+            daily_limit INTEGER NOT NULL DEFAULT 1000,
             is_active INTEGER NOT NULL DEFAULT 1,
             created_at INTEGER NOT NULL,
             last_login INTEGER
@@ -130,6 +131,11 @@ def usage_today(user_id: int) -> int:
 
 
 def can_analyze(user: dict) -> bool:
+    # The Gemini provider already has its own quotas. Do not add a second
+    # application-level quota by default, because it can incorrectly turn a
+    # provider error into a generic HTTP 429 for the user.
+    if not ENFORCE_DAILY_LIMIT:
+        return True
     return usage_today(user["id"]) < int(user.get("daily_limit", FREE_DAILY_LIMIT))
 
 
