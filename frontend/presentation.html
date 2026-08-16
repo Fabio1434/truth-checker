@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Truth Checker</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+.demo-wrap{max-width:1050px;margin:0 auto;padding:48px 24px}.demo-head{text-align:center;margin-bottom:28px}.demo-head h1{font-size:42px;margin:0 0 8px}.demo-head p{opacity:.75}.demo-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:28px}.demo-choices{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:18px 0}.demo-choice{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.03);border-radius:14px;padding:18px;text-align:left;cursor:pointer;color:inherit}.demo-choice.active{border-color:#6ee7b7;box-shadow:0 0 0 1px #6ee7b7}.demo-choice strong{display:block;font-size:18px;margin-bottom:6px}.demo-input{width:100%;box-sizing:border-box;min-height:120px;border-radius:12px;padding:16px;background:rgba(0,0,0,.2);color:inherit;border:1px solid rgba(255,255,255,.12);font:inherit}.demo-analyze{margin-top:16px;width:100%;padding:15px;border:0;border-radius:12px;font-weight:700;font-size:16px;cursor:pointer}.demo-trace{display:none;margin-top:24px}.demo-trace.show{display:block}.demo-step{padding:12px 0;border-bottom:1px solid rgba(255,255,255,.08);opacity:.45}.demo-step.on{opacity:1}.demo-result{display:none;margin-top:26px}.demo-result.show{display:block}.demo-verdict{font-size:42px;font-weight:800}.demo-score{font-size:72px;font-weight:800}.demo-sources{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:18px}.demo-source{padding:14px;border:1px solid rgba(255,255,255,.1);border-radius:12px}.demo-source a{color:inherit}.demo-pill{display:inline-block;padding:5px 9px;border-radius:999px;margin-bottom:8px;background:rgba(110,231,183,.15)}
+@media(max-width:700px){.demo-choices,.demo-sources{grid-template-columns:1fr}.demo-head h1{font-size:32px}}
+</style>
+</head>
+<body>
+<div class="demo-wrap">
+  <header class="demo-head"><div class="eyebrow-line"><span>IA</span><i></i><span>PREUVES WEB</span><i></i><span>ÉDUCATION AUX MÉDIAS</span></div><h1>Truth Checker</h1><p>Vérifiez une affirmation avant de lui faire confiance.</p></header>
+  <main class="demo-card">
+    <label class="field-label">Affirmation ou extrait à vérifier</label>
+    <div class="demo-choices">
+      <button class="demo-choice active" data-mode="true"><strong>✓ Exemple 1</strong><span>L'eau bout à 100 °C au niveau de la mer.</span></button>
+      <button class="demo-choice" data-mode="false"><strong>✕ Exemple 2</strong><span>La Terre possède deux lunes naturelles.</span></button>
+    </div>
+    <textarea id="demo-input" class="demo-input"></textarea>
+    <button id="demo-analyze" class="demo-analyze">Analyser <span>→</span></button>
+    <section id="demo-trace" class="demo-trace">
+      <div class="demo-step" id="s1">✓ Lecture du contenu</div><div class="demo-step" id="s2">✓ Identification de l'affirmation</div><div class="demo-step" id="s3">✓ Recherche de sources</div><div class="demo-step" id="s4">✓ Comparaison des preuves</div><div class="demo-step" id="s5">✓ Calcul du score</div>
+    </section>
+    <section id="demo-result" class="demo-result">
+      <span class="demo-pill">✓ Analyse terminée</span><div id="verdict" class="demo-verdict"></div><div><span id="score" class="demo-score"></span><span>/100</span></div><p id="summary"></p><h3>Preuves &amp; sources</h3><div id="sources" class="demo-sources"></div>
+    </section>
+  </main>
+</div>
+<script>
+(() => {
+ const input=document.querySelector('#demo-input'), choices=[...document.querySelectorAll('.demo-choice')], analyze=document.querySelector('#demo-analyze');
+ let mode='true';
+ const data={true:{text:'L\'eau bout à 100 °C au niveau de la mer.',verdict:'VRAI',score:96,summary:"L'affirmation est conforme aux références scientifiques dans les conditions normales de pression atmosphérique.",sources:[['NIST','https://www.nist.gov/'],['Encyclopaedia Britannica','https://www.britannica.com/science/water'],['USGS','https://www.usgs.gov/special-topics/water-science-school']]},false:{text:'La Terre possède deux lunes naturelles.',verdict:'FAUX',score:98,summary:'L’affirmation est contredite par les références astronomiques : la Terre possède un seul satellite naturel permanent, la Lune.',sources:[['NASA — Moon','https://science.nasa.gov/moon/'],['Encyclopaedia Britannica — Moon','https://www.britannica.com/place/Moon'],['ESA — Moon','https://www.esa.int/Science_Exploration/Human_and_Robotic_Exploration/Exploration/Moon']]}};
+ function select(m){mode=m;choices.forEach(c=>c.classList.toggle('active',c.dataset.mode===m));input.value=data[m].text;}
+ choices.forEach(c=>c.onclick=()=>select(c.dataset.mode)); select('true');
+ analyze.onclick=async()=>{const d=data[mode];input.value=d.text;analyze.disabled=true;document.querySelector('#demo-result').classList.remove('show');document.querySelector('#demo-trace').classList.add('show');for(let i=1;i<=5;i++){await new Promise(r=>setTimeout(r,650));document.querySelector('#s'+i).classList.add('on')}await new Promise(r=>setTimeout(r,500));document.querySelector('#verdict').textContent=d.verdict;document.querySelector('#score').textContent=d.score;document.querySelector('#summary').textContent=d.summary;document.querySelector('#sources').innerHTML=d.sources.map(s=>`<div class="demo-source"><strong>${s[0]}</strong><br><a href="${s[1]}" target="_blank" rel="noopener">Source officielle ↗</a></div>`).join('');document.querySelector('#demo-result').classList.add('show');analyze.disabled=false;document.querySelector('#demo-result').scrollIntoView({behavior:'smooth',block:'start'});};
+})();
+</script>
+</body></html>
