@@ -1,17 +1,6 @@
-"""
-Truth Checker — Refactored Backend (Phase 2)
-===============================================
-
-Truth Checker backend with Gemini grounding and deterministic evidence scoring.
-"""
-
-import base64
-import json
-import os
-import re
-import time
+"""Truth Checker backend - Gemini grounded factual verification."""
+import base64, json, os, re, time
 from typing import Literal, Optional
-
 try:
     from google import genai
     from google.genai import types
@@ -24,56 +13,35 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-
-from app.models.schemas import SourceType, SourceFreshness
 from app.services.source_analyzer import SourceAnalyzer
 from app.services.evidence_engine import EvidenceEngine
 from app.services.cache_service import CacheService
 from app import auth
 
 load_dotenv()
-
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-MODEL = os.environ.get("TRUTHCHECKER_MODEL", "gemini-2.5-flash-lite")
-MAX_SEARCHES = int(os.environ.get("TRUTHCHECKER_MAX_SEARCHES", "6"))
-CACHE_TTL = int(os.environ.get("TRUTHCHECKER_CACHE_TTL", "900"))
-MAX_TEXT_CHARS = int(os.environ.get("TRUTHCHECKER_MAX_TEXT_CHARS", "20000"))
-APP_VERSION = "2026.08.16.4"
-
-if not GEMINI_API_KEY:
-    print("[WARNING] GEMINI_API_KEY is not set.")
-
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+MODEL = os.getenv("TRUTHCHECKER_MODEL", "gemini-2.5-flash-lite")
+CACHE_TTL = int(os.getenv("TRUTHCHECKER_CACHE_TTL", "900"))
+MAX_TEXT_CHARS = int(os.getenv("TRUTHCHECKER_MAX_TEXT_CHARS", "20000"))
+APP_VERSION = "2026.08.16.5"
 client = genai.Client(api_key=GEMINI_API_KEY) if (GEMINI_API_KEY and genai) else None
 analysis_cache = CacheService(ttl_seconds=CACHE_TTL)
-
 app = FastAPI(title="Truth Checker API", version=APP_VERSION)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 @app.middleware("http")
-async def version_header(request: Request, call_next):
+async def add_version_header(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-TruthChecker-Version"] = APP_VERSION
     return response
 
-
 ContentType = Literal["text", "url", "image"]
-
-
 class AnalyzeRequest(BaseModel):
     type: ContentType
-    content: str = Field(default="", description="Raw text, URL, or image caption.")
+    content: str = ""
     image_base64: Optional[str] = None
     image_media_type: Optional[str] = None
-    language: str = Field(default="fr", description="Response language: fr, en, or mg")
-
-
+    language: str = "fr"
 class Source(BaseModel):
     title: str
     url: str
@@ -85,14 +53,10 @@ class Source(BaseModel):
     independence: int = Field(50, ge=0, le=100)
     relevance: int = Field(50, ge=0, le=100)
     freshness: str = "inconnu"
-
-
 class ConfidenceBreakdown(BaseModel):
     source_reliability: int = 0
     corroboration: int = 0
     consensus: int = 0
-
-
 class AnalyzeResponse(BaseModel):
     verdict: Literal["vrai", "faux", "partiellement_vrai", "non_verifiable"]
     score: int = Field(ge=0, le=100)
@@ -110,281 +74,156 @@ class AnalyzeResponse(BaseModel):
     elapsed_ms: int = 0
     metadata: dict = {}
 
+SYSTEM_PROMPT = '''Tu es le moteur de vérification factuelle de Truth Checker.
+Tu dois identifier les affirmations vérifiables, utiliser Google Search et, pour une URL, URL Context, puis trouver plusieurs sources fiables. N'invente jamais une source, une URL ou une citation. Ne choisis jamais de score global : le backend le calcule.
+Retourne UNIQUEMENT un JSON avec: claims, sources, key_findings, summary, correction, correction_source_urls, context, contradictions. Chaque source doit avoir title,url,domain,stance,excerpt. Chaque claim doit avoir text, explanation, supporting_source_urls, contradicting_source_urls.''' 
 
-SYSTEM_PROMPT = """Tu es le moteur de vérification factuelle de Truth Checker.
+def _extract_json(text):
+    text = (text or "").strip()
+    m = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.S)
+    if m: text = m.group(1)
+    else:
+        a,b=text.find("{"),text.rfind("}")
+        if a >= 0 and b > a: text=text[a:b+1]
+    return json.loads(text)
 
-CRITICAL RULE - SCORE NOT BY LLM:
-Tu ne dois PAS choisir un score arbitraire. Le score sera calculé par notre Evidence Engine.
-Ton rôle est de trouver des sources réelles, identifier les affirmations et signaler les contradictions.
-
-MÉTHODE:
-1. Identifie les affirmations factuelles vérifiables.
-2. Utilise Google Search et, si nécessaire, URL Context.
-3. Fais au moins 2 recherches avec formulations différentes.
-4. Pour chaque source: titre, URL réelle, contenu pertinent et position confirme/contredit/contexte.
-
-RÈGLES:
-- N'invente JAMAIS une source, URL ou citation.
-- Si tu ne trouves rien, dis-le clairement.
-- Ne fournis jamais de score global.
-
-RÉPONSE JSON:
-{
-  "claims": [{"text": "...", "verdict": null, "evidence_score": null, "explanation": "...", "supporting_source_urls": [], "contradicting_source_urls": []}],
-  "sources": [{"title": "...", "url": "...", "domain": "...", "stance": "...", "excerpt": "..."}],
-  "key_findings": "...",
-  "summary": "...",
-  "correction": null,
-  "correction_source_urls": [],
-  "context": {"status": "CURRENT|OUTDATED|MISLEADING|UNKNOWN", "explanation": "..."},
-  "contradictions": "..."
-}
-
-La correction doit être strictement fondée sur les sources trouvées.
-"""
-
-
-def _grounding_info(response) -> tuple[set[str], list[str]]:
-    verified_urls: set[str] = set()
-    queries: list[str] = []
+def _grounding_info(response):
+    urls=set(); queries=[]
     try:
-        candidate = (getattr(response, "candidates", None) or [None])[0]
-        metadata = getattr(candidate, "grounding_metadata", None)
-        if metadata:
-            raw_queries = getattr(metadata, "web_search_queries", None) or getattr(metadata, "webSearchQueries", None) or []
-            queries.extend(str(q) for q in raw_queries if q)
-            chunks = getattr(metadata, "grounding_chunks", None) or getattr(metadata, "groundingChunks", None) or []
-            for chunk in chunks:
-                web = getattr(chunk, "web", None)
-                if web is None and isinstance(chunk, dict):
-                    web = chunk.get("web")
-                if web is None:
-                    continue
-                uri = getattr(web, "uri", None) if not isinstance(web, dict) else web.get("uri")
-                if uri and str(uri).startswith(("http://", "https://")):
-                    verified_urls.add(str(uri).strip().rstrip(".,;)]"))
-    except Exception as exc:
-        print(f"[WARNING] Could not extract grounding metadata: {exc}")
-    return verified_urls, queries
+        c=(getattr(response,"candidates",None) or [None])[0]
+        md=getattr(c,"grounding_metadata",None)
+        if md:
+            queries.extend(str(x) for x in (getattr(md,"web_search_queries",None) or getattr(md,"webSearchQueries",None) or []) if x)
+            chunks=getattr(md,"grounding_chunks",None) or getattr(md,"groundingChunks",None) or []
+            for ch in chunks:
+                web=getattr(ch,"web",None) if not isinstance(ch,dict) else ch.get("web")
+                if web is None: continue
+                uri=getattr(web,"uri",None) if not isinstance(web,dict) else web.get("uri")
+                if uri and str(uri).startswith(("http://","https://")): urls.add(str(uri).strip().rstrip(".,;)]"))
+    except Exception as e: print(f"[grounding] {e}")
+    return urls,queries
 
-
-def _count_searches(response) -> int:
-    return len(_grounding_info(response)[1])
-
-
-def _extract_queries(response) -> list[str]:
-    return _grounding_info(response)[1]
-
-
-def _extract_domain(url: str) -> str:
-    try:
-        match = re.search(r"https?://(?:www\.)?([^/]+)", url)
-        return match.group(1) if match else ""
-    except Exception:
-        return ""
-
-
-def _build_gemini_contents(req: AnalyzeRequest):
-    lang_note = "Réponds en français." if req.language == "fr" else "Respond in English." if req.language == "en" else "Valio amin'ny teny Malagasy."
-    if req.type == "image":
-        if not req.image_base64 or not req.image_media_type:
-            raise HTTPException(400, "image_base64 et image_media_type sont requis pour type=image.")
+def _finalize(data,response,started,claim_text):
+    analyzer=SourceAnalyzer(); engine=EvidenceEngine(); verified,queries=_grounding_info(response)
+    sources=[]; seen=set()
+    for raw in (data.get("sources") or []):
+        if not isinstance(raw,dict): continue
+        url=str(raw.get("url","")).strip().rstrip(".,;)]"); title=str(raw.get("title","")).strip()
+        if not url or not title or url in seen or not re.match(r"^https?://",url,re.I): continue
+        if verified and url not in verified: continue
+        stance=str(raw.get("stance","contexte"))
+        if stance not in {"confirme","contredit","contexte"}: stance="contexte"
         try:
-            image_data = base64.b64decode(req.image_base64, validate=True)
-        except Exception:
-            raise HTTPException(400, "image_base64 invalide.")
-        if len(image_data) > 6 * 1024 * 1024:
-            raise HTTPException(413, "Image trop volumineuse. Veuillez utiliser une image de moins de 6 Mo.")
-        instruction = f"{lang_note}\nVoici une image à vérifier."
-        if req.content:
-            instruction += f"\nContexte fourni : {req.content[:MAX_TEXT_CHARS]}"
-        return [types.Part.from_bytes(data=image_data, mime_type=req.image_media_type), instruction]
-    if req.type == "url":
-        return f"{lang_note}\nVoici une URL d'article à vérifier : {req.content}\nUtilise URL Context puis Google Search pour vérifier les affirmations avec plusieurs sources indépendantes."
-    return f'{lang_note}\nVoici un texte / une affirmation à vérifier :\n\n"{req.content[:MAX_TEXT_CHARS]}"'
+            s=analyzer.analyze_source(url,title,str(raw.get("excerpt", "")),stance)
+            s.relevance=analyzer.calculate_source_relevance(s,claim_text or data.get("key_findings", ""))
+            sources.append(Source(title=s.title,url=s.url,domain=s.domain,stance=stance,excerpt=s.excerpt,source_type=s.source_type.value,authority_score=s.authority_score,independence=s.independence,relevance=s.relevance,freshness=s.freshness.value))
+            seen.add(url)
+        except Exception as e: print(f"[source] {e}")
+    support=[s for s in sources if s.stance=="confirme"]; contra=[s for s in sources if s.stance=="contredit"]; context=[s for s in sources if s.stance=="contexte"]
+    from app.models.schemas import Source as DomainSource
+    score,breakdown=engine.calculate_evidence_score([DomainSource(**s.model_dump()) for s in support],[DomainSource(**s.model_dump()) for s in contra],[DomainSource(**s.model_dump()) for s in context])
+    verdict_enum,confidence=engine.determine_verdict(score,len(support),len(contra)); verdict=verdict_enum.value
+    correction=data.get("correction"); correction=correction.get("text") if isinstance(correction,dict) else correction
+    if correction and not contra: correction=None
+    claims=[]
+    for item in (data.get("claims") or [])[:8]:
+        if isinstance(item,dict) and str(item.get("text","")).strip():
+            claims.append({"text":str(item["text"]).strip(),"verdict":verdict,"evidence_score":score,"explanation":str(item.get("explanation",""))[:1000]})
+    if not claims and claim_text: claims=[{"text":claim_text[:500],"verdict":verdict,"evidence_score":score,"explanation":str(data.get("key_findings",""))[:500]}]
+    return AnalyzeResponse(verdict=verdict,score=score,headline_claim=claim_text[:200] or str(data.get("key_findings",""))[:200] or "Affirmation analysée",summary=str(data.get("summary") or f"Analyse fondée sur {len(sources)} source(s)."),explanation=str(data.get("key_findings") or "Le verdict est calculé à partir des preuves disponibles.")[:1200],correction=str(correction)[:2000] if correction else None,sources=sources,contradictions=contra,claims=claims,context=data.get("context") if isinstance(data.get("context"),dict) else None,queries=queries,confidence_breakdown=ConfidenceBreakdown(source_reliability=breakdown.source_reliability,corroboration=breakdown.corroboration,consensus=breakdown.consensus),searches_performed=len(queries),elapsed_ms=int((time.time()-started)*1000),metadata={"searched_at":time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()),"source_count":len(sources),"supporting_count":len(support),"contradicting_count":len(contra),"confidence_level":confidence,"model":MODEL,"app_version":APP_VERSION})
 
+def _contents(req):
+    lang="Réponds en français." if req.language=="fr" else "Respond in English." if req.language=="en" else "Valio amin'ny teny Malagasy."
+    if req.type=="image":
+        if not req.image_base64 or not req.image_media_type: raise HTTPException(400,"Image manquante.")
+        try: data=base64.b64decode(req.image_base64,validate=True)
+        except Exception: raise HTTPException(400,"image_base64 invalide.")
+        if len(data)>6*1024*1024: raise HTTPException(413,"Image trop volumineuse (maximum 6 Mo).")
+        return [types.Part.from_bytes(data=data,mime_type=req.image_media_type),f"{lang}\nVérifie le message porté par cette image. {req.content[:MAX_TEXT_CHARS]}"]
+    if req.type=="url": return f"{lang}\nURL à vérifier: {req.content}\nLis-la avec URL Context puis vérifie ses affirmations avec Google Search et plusieurs sources indépendantes."
+    return f'{lang}\nTexte à vérifier:\n\n"{req.content[:MAX_TEXT_CHARS]}"'
 
-def _gemini_config(req: AnalyzeRequest):
-    tool_list = [{"google_search": {}}]
-    if req.type == "url":
-        tool_list.insert(0, {"url_context": {}})
-    return types.GenerateContentConfig(
-        system_instruction=SYSTEM_PROMPT,
-        temperature=0.2,
-        max_output_tokens=2048,
-        tools=tool_list,
-    )
-
-
-def _gemini_generate(req: AnalyzeRequest):
-    contents = _build_gemini_contents(req)
-    response = client.models.generate_content(model=MODEL, contents=contents, config=_gemini_config(req))
-    raw_text = (getattr(response, "text", None) or "").strip()
-    if not raw_text:
-        raise ValueError("Gemini returned no text")
-    return response, raw_text
-
+def _generate(req):
+    tools=[{"google_search":{}}]
+    if req.type=="url": tools.insert(0,{"url_context":{}})
+    cfg=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT,temperature=0.2,max_output_tokens=2048,tools=tools)
+    return client.models.generate_content(model=MODEL,contents=_contents(req),config=cfg)
 
 class RegisterRequest(BaseModel):
-    email: str = Field(min_length=5, max_length=254)
-    password: str = Field(min_length=8, max_length=128)
-
-
+    email:str=Field(min_length=5,max_length=254); password:str=Field(min_length=8,max_length=128)
 class LoginRequest(BaseModel):
-    email: str
-    password: str
+    email:str; password:str
 
-
-def current_user(request: Request):
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(401, "Connexion requise.")
-    user = auth.verify_token(auth_header[7:].strip())
-    if not user:
-        raise HTTPException(401, "Session invalide ou expirée.")
+def current_user(request:Request):
+    h=request.headers.get("Authorization","")
+    if not h.startswith("Bearer "): raise HTTPException(401,"Connexion requise.")
+    user=auth.verify_token(h[7:].strip())
+    if not user: raise HTTPException(401,"Session invalide ou expirée.")
     return user
-
-
-@app.post("/api/auth/register")
-def register(req: RegisterRequest):
-    email = req.email.strip().lower()
-    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
-        raise HTTPException(400, "Adresse email invalide.")
-    if len(req.password) < 8 or not re.search(r"[A-Za-z]", req.password) or not re.search(r"\d", req.password):
-        raise HTTPException(400, "Le mot de passe doit contenir au moins 8 caractères, une lettre et un chiffre.")
-    if auth.get_user_by_email(email):
-        raise HTTPException(409, "Un compte existe déjà avec cet email.")
-    try:
-        user = auth.create_user(email, req.password)
-    except Exception:
-        raise HTTPException(409, "Impossible de créer ce compte.")
-    return {"user": {"id": user["id"], "email": user["email"], "plan": user["plan"], "daily_limit": user["daily_limit"]}, "token": auth.make_token(user["id"])}
-
-
-@app.post("/api/auth/login")
-def login(req: LoginRequest):
-    user = auth.verify_login(req.email, req.password)
-    if not user:
-        raise HTTPException(401, "Email ou mot de passe incorrect.")
-    return {"user": {"id": user["id"], "email": user["email"], "plan": user["plan"], "daily_limit": user["daily_limit"]}, "token": auth.make_token(user["id"])}
-
-
-@app.get("/api/auth/me")
-def me(user=Depends(current_user)):
-    return {"id": user["id"], "email": user["email"], "plan": user["plan"], "daily_limit": user["daily_limit"], "used_today": auth.usage_today(user["id"])}
-
-
-@app.get("/api/auth/usage")
-def usage(user=Depends(current_user)):
-    return {"used_today": auth.usage_today(user["id"]), "daily_limit": int(user["daily_limit"]), "remaining": max(0, int(user["daily_limit"]) - auth.usage_today(user["id"]))}
-
-
-@app.get("/api/history")
-def get_history(user=Depends(current_user)):
-    return {"items": auth.history(user["id"], 50)}
-
 
 @app.get("/api/health")
 def health():
-    return {
-        "status": "ok",
-        "version": APP_VERSION,
-        "model": MODEL,
-        "api_key_configured": bool(GEMINI_API_KEY),
-        "analysis_quota_enforced": False,
-        "max_text_chars": MAX_TEXT_CHARS,
-        "max_output_tokens": 2048,
-        "architecture": "Evidence Engine + Gemini grounding",
-        "cache_ttl_seconds": CACHE_TTL,
-        "cache": analysis_cache.stats(),
-    }
+    return {"status":"ok","version":APP_VERSION,"model":MODEL,"api_key_configured":bool(GEMINI_API_KEY),"analysis_quota_enforced":False,"max_text_chars":MAX_TEXT_CHARS,"max_output_tokens":2048}
 
+@app.post("/api/auth/register")
+def register(req:RegisterRequest):
+    email=req.email.strip().lower()
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$",email): raise HTTPException(400,"Adresse email invalide.")
+    if auth.get_user_by_email(email): raise HTTPException(409,"Un compte existe déjà avec cet email.")
+    try: user=auth.create_user(email,req.password)
+    except Exception: raise HTTPException(409,"Impossible de créer ce compte.")
+    return {"user":{"id":user["id"],"email":user["email"],"plan":user["plan"],"daily_limit":user["daily_limit"]},"token":auth.make_token(user["id"])}
 
-@app.post("/api/analyze")
-def analyze(req: AnalyzeRequest, user=Depends(current_user)):
-    if not client:
-        raise HTTPException(500, "GEMINI_API_KEY missing on server")
-    if req.type != "image" and not req.content.strip():
-        raise HTTPException(400, "content field empty")
-    started = time.time()
-    cache_claim = req.content if req.type != "image" else (req.content or "image")
-    cached = analysis_cache.get(cache_claim, req.language)
+@app.post("/api/auth/login")
+def login(req:LoginRequest):
+    user=auth.verify_login(req.email,req.password)
+    if not user: raise HTTPException(401,"Email ou mot de passe incorrect.")
+    return {"user":{"id":user["id"],"email":user["email"],"plan":user["plan"],"daily_limit":user["daily_limit"]},"token":auth.make_token(user["id"])}
+
+@app.get("/api/auth/me")
+def me(user=Depends(current_user)): return {"id":user["id"],"email":user["email"],"plan":user["plan"],"daily_limit":user["daily_limit"],"used_today":auth.usage_today(user["id"])}
+@app.get("/api/auth/usage")
+def usage(user=Depends(current_user)): return {"used_today":auth.usage_today(user["id"]),"daily_limit":int(user["daily_limit"]),"remaining":max(0,int(user["daily_limit"])-auth.usage_today(user["id"]))}
+@app.get("/api/history")
+def history(user=Depends(current_user)): return {"items":auth.history(user["id"],50)}
+
+@app.post("/api/analyze",response_model=AnalyzeResponse)
+def analyze(req:AnalyzeRequest,user=Depends(current_user)):
+    if not client: raise HTTPException(500,"GEMINI_API_KEY missing on server")
+    if req.type!="image" and not req.content.strip(): raise HTTPException(400,"content field empty")
+    started=time.time(); key=req.content if req.type!="image" else (req.content or "image")
+    cached=analysis_cache.get(key,req.language)
     if cached:
-        cached["metadata"] = {**(cached.get("metadata") or {}), "cache_hit": True, "app_version": APP_VERSION}
-        auth.save_analysis(user["id"], req.type, req.content, cached)
-        return AnalyzeResponse(**cached)
+        cached=dict(cached); cached["metadata"]={**cached.get("metadata",{}),"cache_hit":True,"app_version":APP_VERSION}; return AnalyzeResponse(**cached)
     try:
-        response, raw_text = _gemini_generate(req)
-    except HTTPException:
-        raise
+        response=_generate(req); raw=(getattr(response,"text",None) or "").strip()
+    except HTTPException: raise
     except Exception as e:
-        print(f"[Gemini error] {e}")
-        raise HTTPException(502, f"Gemini API error: {e}")
-    try:
-        data = json.loads(raw_text)
-    except json.JSONDecodeError:
-        try:
-            first, last = raw_text.find("{"), raw_text.rfind("}")
-            if first < 0 or last <= first:
-                raise ValueError("No JSON object found")
-            data = json.loads(raw_text[first:last + 1])
-        except Exception as e:
-            raise HTTPException(502, f"Gemini response not valid JSON: {e}")
-    try:
-        analyzed = _finalize_with_evidence_engine(data, response, started, req.content)
-        payload = analyzed.model_dump()
-        payload["metadata"] = {**payload.get("metadata", {}), "cache_hit": False, "app_version": APP_VERSION}
-        analysis_cache.set(cache_claim, payload, req.language)
-        return AnalyzeResponse(**payload)
-    except Exception as e:
-        raise HTTPException(502, f"Response schema error: {e}")
-
+        msg=str(e); print(f"[Gemini] {msg}")
+        if "429" in msg or "RESOURCE_EXHAUSTED" in msg: raise HTTPException(503,"Gemini est temporairement limité. Réessaie dans quelques secondes.",headers={"Retry-After":"10"})
+        if "413" in msg or "request_too_large" in msg: raise HTTPException(413,"La requête envoyée à Gemini est trop volumineuse.")
+        raise HTTPException(502,f"Gemini API error: {msg}")
+    try: data=_extract_json(raw)
+    except Exception as e: raise HTTPException(502,f"Gemini response not valid JSON: {e}")
+    result=_finalize(data,response,started,req.content); payload=result.model_dump(); payload["metadata"]={**payload.get("metadata",{}),"cache_hit":False}; analysis_cache.set(key,payload,req.language); return AnalyzeResponse(**payload)
 
 @app.post("/api/analyze/stream")
-def analyze_stream(req: AnalyzeRequest, user=Depends(current_user)):
-    if not client:
-        raise HTTPException(500, "GEMINI_API_KEY missing on server")
-    if req.type != "image" and not req.content.strip():
-        raise HTTPException(400, "content empty")
+def analyze_stream(req:AnalyzeRequest,user=Depends(current_user)):
+    if not client: raise HTTPException(500,"GEMINI_API_KEY missing on server")
+    if req.type!="image" and not req.content.strip(): raise HTTPException(400,"content empty")
     def gen():
-        started = time.time()
         try:
-            yield _sse("step", {"label": "Analyzing content..."})
-            response, raw_text = _gemini_generate(req)
-            _, queries = _grounding_info(response)
-            for q in queries:
-                yield _sse("search", {"query": q})
-            yield _sse("step", {"label": "Writing verdict..."})
-            try:
-                data = json.loads(raw_text)
-            except json.JSONDecodeError:
-                first, last = raw_text.find("{"), raw_text.rfind("}")
-                if first < 0 or last <= first:
-                    yield _sse("error", {"message": "Invalid JSON from Gemini"})
-                    return
-                data = json.loads(raw_text[first:last + 1])
-            validated = _finalize_with_evidence_engine(data, response, started, req.content)
-            result_dict = validated.model_dump()
-            result_dict["metadata"] = {**result_dict.get("metadata", {}), "app_version": APP_VERSION}
-            auth.save_analysis(user["id"], req.type, req.content, result_dict)
-            yield _sse("result", result_dict)
+            yield _sse("step",{"label":"Analyzing content..."}); response=_generate(req); yield _sse("step",{"label":"Searching sources..."}); _,qs=_grounding_info(response)
+            for q in qs: yield _sse("search",{"query":q})
+            yield _sse("step",{"label":"Writing verdict..."}); result=_finalize(_extract_json(getattr(response,"text","") or ""),response,time.time(),req.content); d=result.model_dump(); auth.save_analysis(user["id"],req.type,req.content,d); yield _sse("result",d)
         except Exception as e:
-            print(f"[stream error] {e}")
-            yield _sse("error", {"message": f"Gemini API error: {e}"})
-    return StreamingResponse(gen(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+            msg=str(e); yield _sse("error",{"message":msg})
+    return StreamingResponse(gen(),media_type="text/event-stream",headers={"Cache-Control":"no-cache","X-Accel-Buffering":"no"})
 
+def _sse(event,data): return f"event: {event}\ndata: {json.dumps(data,ensure_ascii=False)}\n\n"
 
-def _sse(event: str, data: dict) -> str:
-    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
-
-
-# Keep the existing evidence finalizer used by the project.
-# It is defined above this section in the production file.
-
-FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
-if os.path.isdir(FRONTEND_DIR):
-    app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
-
-if __name__ == "__main__":
+FRONTEND_DIR=os.path.join(os.path.dirname(__file__),"..","frontend")
+if os.path.isdir(FRONTEND_DIR): app.mount("/",StaticFiles(directory=FRONTEND_DIR,html=True),name="frontend")
+if __name__=="__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=int(os.getenv("PORT", "8000")), reload=True)
+    uvicorn.run("main:app",host="0.0.0.0",port=int(os.getenv("PORT","8000")),reload=True)
