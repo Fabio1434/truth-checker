@@ -15,34 +15,45 @@ from app.services import demo_mode
 app = real_main.app
 DEMO_ENABLED = demo_mode.is_enabled()
 
+# Starlette matches routes in list order. main.py mounts the frontend at "/",
+# which is a catch-all Mount. Because this wrapper imports main.py and then adds
+# routes, the safest approach is to move ALL catch-all mounts to the end first.
+# This avoids relying on the internal Mount class name or on insertion details.
 
-def _add_api_route_before_frontend(path, endpoint, **kwargs):
-    """Register an API route before the catch-all frontend mount.
+def _move_frontend_mounts_to_end() -> None:
+    routes = list(app.router.routes)
+    mounts = [
+        route for route in routes
+        if getattr(route, "path", None) == "/"
+        and getattr(route, "name", None) == "frontend"
+    ]
+    if not mounts:
+        return
+    non_mounts = [route for route in routes if route not in mounts]
+    app.router.routes[:] = non_mounts + mounts
 
-    main.py mounts StaticFiles at '/' after defining its API routes. Routes
-    added here after importing main.py would otherwise be appended after that
-    catch-all mount, causing POST /api/* requests to return 405. Insert new
-    routes immediately before the frontend Mount instead.
-    """
-    before = len(app.router.routes)
+
+def _add_api_route(path, endpoint, **kwargs):
+    """Add an API route and guarantee it stays before the frontend mount."""
+    _move_frontend_mounts_to_end()
     app.add_api_route(path, endpoint, **kwargs)
-    new_route = app.router.routes.pop()
-
-    frontend_index = None
-    for i, route in enumerate(app.router.routes):
-        if getattr(route, "path", None) == "/" and route.__class__.__name__ == "Mount":
-            frontend_index = i
-            break
-
-    if frontend_index is None:
-        app.router.routes.append(new_route)
-    else:
-        app.router.routes.insert(frontend_index, new_route)
-
-    return new_route
+    _move_frontend_mounts_to_end()
 
 
-# Diagnostic endpoint must also be placed before the frontend catch-all mount.
+# Remove production analysis handlers in demo mode before adding the demo ones.
+# The production routes are already before the frontend mount, but removing
+# them makes the replacement deterministic and prevents duplicate matches.
+if DEMO_ENABLED:
+    app.router.routes[:] = [
+        route
+        for route in app.router.routes
+        if getattr(route, "path", None) not in {
+            "/api/analyze",
+            "/api/analyze/stream",
+        }
+    ]
+
+
 def demo_status():
     return {
         "enabled": DEMO_ENABLED,
@@ -51,7 +62,7 @@ def demo_status():
     }
 
 
-_add_api_route_before_frontend(
+_add_api_route(
     "/api/demo/status",
     demo_status,
     methods=["GET"],
@@ -59,17 +70,11 @@ _add_api_route_before_frontend(
 )
 
 if DEMO_ENABLED:
-    # Remove the production analysis handlers. We will add the demo handlers
-    # back in the same API section, before the frontend catch-all mount.
-    app.router.routes[:] = [
-        route
-        for route in app.router.routes
-        if getattr(route, "path", None) not in {"/api/analyze", "/api/analyze/stream"}
-    ]
 
     def demo_analyze(req: real_main.AnalyzeRequest, user=Depends(real_main.current_user)):
         if req.type != "image" and not req.content.strip():
             raise HTTPException(400, "content field empty")
+
         result = demo_mode.analyze(req.content, req.language)
         result["metadata"] = {
             **result.get("metadata", {}),
@@ -93,6 +98,7 @@ if DEMO_ENABLED:
             for label in steps:
                 yield real_main._sse("step", {"label": label})
                 time.sleep(0.35)
+
             result = demo_mode.analyze(req.content, req.language)
             result["metadata"] = {
                 **result.get("metadata", {}),
@@ -110,16 +116,19 @@ if DEMO_ENABLED:
             },
         )
 
-    _add_api_route_before_frontend(
+    _add_api_route(
         "/api/analyze",
         demo_analyze,
         methods=["POST"],
         response_model=real_main.AnalyzeResponse,
     )
-    _add_api_route_before_frontend(
+    _add_api_route(
         "/api/analyze/stream",
         demo_analyze_stream,
         methods=["POST"],
     )
+
+# Final safety pass: API routes must precede the frontend catch-all.
+_move_frontend_mounts_to_end()
 
 print(f"[TruthChecker] main_demo loaded; TRUTHCHECKER_DEMO={DEMO_ENABLED}")
