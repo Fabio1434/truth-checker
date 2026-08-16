@@ -20,10 +20,11 @@ from app import auth
 
 load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-MODEL = os.getenv("TRUTHCHECKER_MODEL", "gemini-2.5-flash-lite")
+# Gemini 3.5 Flash-Lite is the default; Render can override it with TRUTHCHECKER_MODEL.
+MODEL = os.getenv("TRUTHCHECKER_MODEL", "gemini-3.5-flash-lite")
 CACHE_TTL = int(os.getenv("TRUTHCHECKER_CACHE_TTL", "900"))
 MAX_TEXT_CHARS = int(os.getenv("TRUTHCHECKER_MAX_TEXT_CHARS", "20000"))
-APP_VERSION = "2026.08.16.5"
+APP_VERSION = "2026.08.16.6"
 client = genai.Client(api_key=GEMINI_API_KEY) if (GEMINI_API_KEY and genai) else None
 analysis_cache = CacheService(ttl_seconds=CACHE_TTL)
 app = FastAPI(title="Truth Checker API", version=APP_VERSION)
@@ -76,7 +77,7 @@ class AnalyzeResponse(BaseModel):
 
 SYSTEM_PROMPT = '''Tu es le moteur de vérification factuelle de Truth Checker.
 Tu dois identifier les affirmations vérifiables, utiliser Google Search et, pour une URL, URL Context, puis trouver plusieurs sources fiables. N'invente jamais une source, une URL ou une citation. Ne choisis jamais de score global : le backend le calcule.
-Retourne UNIQUEMENT un JSON avec: claims, sources, key_findings, summary, correction, correction_source_urls, context, contradictions. Chaque source doit avoir title,url,domain,stance,excerpt. Chaque claim doit avoir text, explanation, supporting_source_urls, contradicting_source_urls.''' 
+Retourne UNIQUEMENT un JSON avec: claims, sources, key_findings, summary, correction, correction_source_urls, context, contradictions. Chaque source doit avoir title,url,domain,stance,excerpt. Chaque claim doit avoir text, explanation, supporting_source_urls, contradicting_source_urls.'''
 
 def _extract_json(text):
     text = (text or "").strip()
@@ -146,7 +147,8 @@ def _contents(req):
 def _generate(req):
     tools=[{"google_search":{}}]
     if req.type=="url": tools.insert(0,{"url_context":{}})
-    cfg=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT,temperature=0.2,max_output_tokens=2048,tools=tools)
+    # Gemini 3.x: temperature/top_p/top_k are intentionally omitted.
+    cfg=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT,max_output_tokens=2048,tools=tools)
     return client.models.generate_content(model=MODEL,contents=_contents(req),config=cfg)
 
 class RegisterRequest(BaseModel):
