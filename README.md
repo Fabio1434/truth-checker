@@ -213,7 +213,7 @@ Le bouton « Mode Jury » masque les éléments secondaires et recentre l'écran
 ### Principe de score
 Le score final affiché est un **Evidence Score** calculé par le backend à partir des sources et de leurs caractéristiques. Il n'est pas accepté directement depuis le LLM.
 
-## Authentification multi-utilisateurs (V6.1 → V6.1 Secure)
+## Authentification multi-utilisateurs
 
 La version modifiée inclut une authentification centralisée :
 
