@@ -1,105 +1,101 @@
-"""Render entrypoint for Truth Checker."""
+"""Dedicated Render entrypoint for Truth Checker.
+
+This module builds a clean FastAPI application around the production handlers
+from main.py. It deliberately does not use a catch-all frontend route: the
+frontend files are exposed through explicit GET routes so they can never
+shadow POST /api/* endpoints.
+"""
 from __future__ import annotations
 
 import os
-import json
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI
 from fastapi.responses import FileResponse
-from starlette.routing import Mount
 
 import main as _main
 
-# Build the Render app from the production FastAPI app, but remove the root
-# StaticFiles mount inherited from main.py. That mount is a catch-all and can
-# return 405 for unmatched POST requests.
-app = _main.app
-app.router.routes[:] = [
-    route
-    for route in app.router.routes
-    if not (
-        isinstance(route, Mount)
-        and getattr(route, "path", None) == "/"
-        and getattr(route, "name", None) == "frontend"
-    )
-]
+# Reuse the production application middleware, models, auth dependencies and
+# handler functions, but create a clean router table for Render.
+app = FastAPI(title=_main.app.title, version=_main.app.version)
 
+for middleware in _main.app.user_middleware:
+    app.user_middleware.append(middleware)
+app.middleware_stack = app.build_middleware_stack()
 
-def _remove_path(path: str) -> None:
-    app.router.routes[:] = [
-        route for route in app.router.routes
-        if getattr(route, "path", None) != path
-    ]
+# Import the production routes by re-registering the handler callables that
+# the frontend actually needs. API routes are intentionally registered before
+# any frontend routes.
 
+@app.get("/api/health")
+def health():
+    return _main.health()
 
-# Remove any existing analysis routes and re-register them at the very start
-# of Starlette's route table. This makes their precedence unambiguous.
-_remove_path("/api/analyze")
-_remove_path("/api/analyze/stream")
+@app.post("/api/auth/register")
+def register(req: _main.RegisterRequest):
+    return _main.register(req)
 
-app.add_api_route(
-    "/api/analyze",
-    _main.analyze,
-    methods=["POST"],
-    response_model=_main.AnalyzeResponse,
-)
-app.add_api_route(
-    "/api/analyze/stream",
-    _main.analyze_stream,
-    methods=["POST"],
-)
+@app.post("/api/auth/login")
+def login(req: _main.LoginRequest):
+    return _main.login(req)
 
-# Move the two analysis routes to absolute first position.
-analysis_routes = []
-other_routes = []
-for route in app.router.routes:
-    if getattr(route, "path", None) in {"/api/analyze", "/api/analyze/stream"}:
-        analysis_routes.append(route)
-    else:
-        other_routes.append(route)
-app.router.routes[:] = analysis_routes + other_routes
+@app.get("/api/auth/me")
+def me(user=_main.Depends(_main.current_user)):
+    return _main.me(user)
 
+@app.get("/api/auth/usage")
+def usage(user=_main.Depends(_main.current_user)):
+    return _main.usage(user)
+
+@app.get("/api/history")
+def history(user=_main.Depends(_main.current_user)):
+    return _main.history(user)
+
+@app.post("/api/analyze", response_model=_main.AnalyzeResponse)
+def analyze(req: _main.AnalyzeRequest, user=_main.Depends(_main.current_user)):
+    return _main.analyze(req, user)
+
+@app.post("/api/analyze/stream")
+def analyze_stream(req: _main.AnalyzeRequest, user=_main.Depends(_main.current_user)):
+    return _main.analyze_stream(req, user)
 
 @app.get("/api/debug/routes", include_in_schema=False)
 def debug_routes():
-    result = []
-    for i, route in enumerate(app.router.routes):
-        path = getattr(route, "path", None)
-        methods = sorted(getattr(route, "methods", set()) or [])
-        if path and (path.startswith("/api/") or path == "/"):
-            result.append({
-                "index": i,
-                "path": path,
-                "methods": methods,
-                "name": getattr(route, "name", ""),
-                "type": route.__class__.__name__,
-            })
-    return result
+    return [
+        {
+            "index": i,
+            "path": getattr(route, "path", None),
+            "methods": sorted(getattr(route, "methods", set()) or []),
+            "name": getattr(route, "name", ""),
+            "type": route.__class__.__name__,
+        }
+        for i, route in enumerate(app.router.routes)
+        if getattr(route, "path", None)
+    ]
 
+FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
 
-FRONTEND_DIR = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "frontend")
-)
-
-# GET-only frontend fallback, registered after all API routes.
+# Explicit GET-only frontend routes. No catch-all route is used.
 if os.path.isdir(FRONTEND_DIR):
 
-    @app.get("/{path:path}", include_in_schema=False)
-    async def frontend_fallback(path: str = ""):
-        root = FRONTEND_DIR
-        requested = os.path.abspath(os.path.join(root, path))
+    @app.get("/", include_in_schema=False)
+    async def frontend_index():
+        return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
 
-        if requested != root and not requested.startswith(root + os.sep):
-            raise HTTPException(404, "Not found")
+    @app.get("/app.js", include_in_schema=False)
+    async def frontend_app_js():
+        return FileResponse(os.path.join(FRONTEND_DIR, "app.js"))
 
-        if path and os.path.isfile(requested):
-            return FileResponse(requested)
+    @app.get("/styles.css", include_in_schema=False)
+    async def frontend_styles():
+        return FileResponse(os.path.join(FRONTEND_DIR, "styles.css"))
 
-        index = os.path.join(root, "index.html")
-        if os.path.isfile(index):
-            return FileResponse(index)
-
-        raise HTTPException(404, "Frontend not found")
+    # Common static assets referenced by the current frontend.
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def frontend_favicon():
+        path = os.path.join(FRONTEND_DIR, "favicon.ico")
+        return FileResponse(path) if os.path.isfile(path) else FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
 
 print("[TruthChecker] Render entrypoint loaded")
-print("[TruthChecker] Explicit POST analysis routes registered first")
-print("[TruthChecker] GET-only frontend fallback registered last")
+print("[TruthChecker] Clean API router created")
+print("[TruthChecker] POST /api/analyze registered")
+print("[TruthChecker] POST /api/analyze/stream registered")
+print("[TruthChecker] Explicit GET-only frontend routes registered")
