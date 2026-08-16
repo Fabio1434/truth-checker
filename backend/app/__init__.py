@@ -1,13 +1,21 @@
 """Application package initialization.
 
-Keep production defaults conservative for the Gemini API.  Flash-Lite supports
-Google Search grounding, URL Context and structured output while being designed
-for high-frequency workloads.
+Production defaults are intentionally conservative for Gemini API usage.
+Flash-Lite supports Google Search grounding, URL Context and structured output
+and is designed for high-frequency workloads.
 
-An explicit TRUTHCHECKER_MODEL environment variable still takes precedence.
+Set TRUTHCHECKER_USE_LITE=0 if you explicitly want another model through
+TRUTHCHECKER_MODEL.
 """
 
 import os
 
-# Only provide a default here; an explicit Render/local environment variable wins.
-os.environ.setdefault("TRUTHCHECKER_MODEL", "gemini-2.5-flash-lite")
+USE_LITE = os.getenv("TRUTHCHECKER_USE_LITE", "1").strip().lower() not in {"0", "false", "no", "off"}
+
+if USE_LITE:
+    # This deliberately overrides an old `gemini-2.5-flash` deployment setting
+    # so an existing Render environment benefits from the lower-cost/high-volume
+    # model without requiring a manual migration first.
+    os.environ["TRUTHCHECKER_MODEL"] = "gemini-2.5-flash-lite"
+else:
+    os.environ.setdefault("TRUTHCHECKER_MODEL", "gemini-2.5-flash")
