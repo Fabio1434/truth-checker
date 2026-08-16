@@ -15,9 +15,34 @@ from app.services import demo_mode
 app = real_main.app
 DEMO_ENABLED = demo_mode.is_enabled()
 
-# Always expose a diagnostic endpoint so deployment can be verified without
-# making an analysis request. Register it explicitly rather than relying on a
-# decorator after route-list manipulation.
+
+def _add_api_route_before_frontend(path, endpoint, **kwargs):
+    """Register an API route before the catch-all frontend mount.
+
+    main.py mounts StaticFiles at '/' after defining its API routes. Routes
+    added here after importing main.py would otherwise be appended after that
+    catch-all mount, causing POST /api/* requests to return 405. Insert new
+    routes immediately before the frontend Mount instead.
+    """
+    before = len(app.router.routes)
+    app.add_api_route(path, endpoint, **kwargs)
+    new_route = app.router.routes.pop()
+
+    frontend_index = None
+    for i, route in enumerate(app.router.routes):
+        if getattr(route, "path", None) == "/" and route.__class__.__name__ == "Mount":
+            frontend_index = i
+            break
+
+    if frontend_index is None:
+        app.router.routes.append(new_route)
+    else:
+        app.router.routes.insert(frontend_index, new_route)
+
+    return new_route
+
+
+# Diagnostic endpoint must also be placed before the frontend catch-all mount.
 def demo_status():
     return {
         "enabled": DEMO_ENABLED,
@@ -25,13 +50,20 @@ def demo_status():
         "module": "main_demo",
     }
 
-app.add_api_route("/api/demo/status", demo_status, methods=["GET"], include_in_schema=False)
+
+_add_api_route_before_frontend(
+    "/api/demo/status",
+    demo_status,
+    methods=["GET"],
+    include_in_schema=False,
+)
 
 if DEMO_ENABLED:
-    # Remove the production analysis handlers so the existing frontend can keep
-    # calling the same POST URLs while the presentation mode is enabled.
+    # Remove the production analysis handlers. We will add the demo handlers
+    # back in the same API section, before the frontend catch-all mount.
     app.router.routes[:] = [
-        route for route in app.router.routes
+        route
+        for route in app.router.routes
         if getattr(route, "path", None) not in {"/api/analyze", "/api/analyze/stream"}
     ]
 
@@ -78,13 +110,13 @@ if DEMO_ENABLED:
             },
         )
 
-    app.add_api_route(
+    _add_api_route_before_frontend(
         "/api/analyze",
         demo_analyze,
         methods=["POST"],
         response_model=real_main.AnalyzeResponse,
     )
-    app.add_api_route(
+    _add_api_route_before_frontend(
         "/api/analyze/stream",
         demo_analyze_stream,
         methods=["POST"],
