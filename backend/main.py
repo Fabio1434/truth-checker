@@ -20,11 +20,13 @@ from app import auth
 
 load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-# Gemini 3.5 Flash-Lite is the default; Render can override it with TRUTHCHECKER_MODEL.
-MODEL = os.getenv("TRUTHCHECKER_MODEL", "gemini-3.5-flash-lite")
+# Gemini 3.5 Flash-Lite is the production model for Truth Checker.
+# Ignore the obsolete Gemini 2.5 Flash-Lite value if an old Render environment variable remains.
+_configured_model = os.getenv("TRUTHCHECKER_MODEL", "").strip()
+MODEL = "gemini-3.5-flash-lite" if _configured_model in {"", "gemini-2.5-flash-lite"} else _configured_model
 CACHE_TTL = int(os.getenv("TRUTHCHECKER_CACHE_TTL", "900"))
 MAX_TEXT_CHARS = int(os.getenv("TRUTHCHECKER_MAX_TEXT_CHARS", "20000"))
-APP_VERSION = "2026.08.16.6"
+APP_VERSION = "2026.08.16.7"
 client = genai.Client(api_key=GEMINI_API_KEY) if (GEMINI_API_KEY and genai) else None
 analysis_cache = CacheService(ttl_seconds=CACHE_TTL)
 app = FastAPI(title="Truth Checker API", version=APP_VERSION)
@@ -147,7 +149,7 @@ def _contents(req):
 def _generate(req):
     tools=[{"google_search":{}}]
     if req.type=="url": tools.insert(0,{"url_context":{}})
-    # Gemini 3.x: temperature/top_p/top_k are intentionally omitted.
+    # Gemini 3.x: deprecated sampling parameters are intentionally omitted.
     cfg=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT,max_output_tokens=2048,tools=tools)
     return client.models.generate_content(model=MODEL,contents=_contents(req),config=cfg)
 
